@@ -45,11 +45,10 @@ func (d DatabaseConfig) ConnectionString() string {
 
 // RIndexConfig holds R.index instrument settings
 type RIndexConfig struct {
-	StartingPrice        decimal.Decimal `yaml:"starting_price"`
-	TickSize             decimal.Decimal `yaml:"tick_size"`
-	MinOrderSize         decimal.Decimal `yaml:"min_order_size"`
-	MaxLeverage          int             `yaml:"max_leverage"`
-	FundingIntervalHours int             `yaml:"funding_interval_hours"`
+	StartingPrice decimal.Decimal `yaml:"starting_price"`
+	TickSize      decimal.Decimal `yaml:"tick_size"`
+	MinOrderSize  decimal.Decimal `yaml:"min_order_size"`
+	MaxLeverage   int             `yaml:"max_leverage"`
 }
 
 // AuthConfig holds authentication settings
@@ -170,11 +169,10 @@ func LoadOrDefault(path string) *Config {
 				MaxConnections: 25,
 			},
 			RIndex: RIndexConfig{
-				StartingPrice:        decimal.NewFromInt(1000),
-				TickSize:             decimal.NewFromFloat(0.01),
-				MinOrderSize:         decimal.NewFromFloat(0.001),
-				MaxLeverage:          150,
-				FundingIntervalHours: 8,
+				StartingPrice: decimal.NewFromInt(1000),
+				TickSize:      decimal.NewFromFloat(0.01),
+				MinOrderSize:  decimal.NewFromFloat(0.001),
+				MaxLeverage:   150,
 			},
 			Auth: AuthConfig{
 				TokenExpiryHours: 24,

@@ -34,12 +34,11 @@ Trade.re features a single tradeable instrument: **R.index** - a virtual perpetu
 | Parameter | Value |
 |-----------|-------|
 | Symbol | `R.index` |
-| Type | Perpetual |
+| Type | Perpetual (no expiry) |
 | Starting Price | Configurable (default: 1000) |
 | Tick Size | 0.01 |
 | Min Order Size | 0.001 |
-| Max Leverage | 150x (Binance-style) |
-| Funding Interval | 8 hours |
+| Max Leverage | 150x |
 
 ## Leverage System
 
@@ -50,37 +49,37 @@ Every trader's leverage is **publicly visible**:
 - Leaderboards can filter by leverage tier (1-10x, 10-50x, 50-150x)
 
 ### Leverage Tiers
-| Tier | Range | Maintenance Margin |
-|------|-------|-------------------|
-| Conservative | 1-10x | 0.5% |
-| Moderate | 11-50x | 1% |
-| Aggressive | 51-100x | 2% |
-| Degen | 101-150x | 5% |
+| Tier | Range | Maintenance Margin | Color |
+|------|-------|-------------------|-------|
+| Conservative | 1-10x | 0.5% | Green |
+| Moderate | 11-50x | 1% | Yellow |
+| Aggressive | 51-100x | 2% | Red |
+| Degen | 101-150x | 5% | Purple |
 
 ### Liquidation Rules
-- **Liquidation Price** = Entry Price ± (Entry Price / Leverage) * (1 - Maintenance Margin)
-- Liquidations are executed against the insurance fund first
-- If insurance fund insufficient, ADL (Auto-Deleveraging) kicks in
-- All liquidations are broadcast in real-time with full details
+- **Liquidation Price** = Entry ± (Entry / Leverage) × (1 - Maintenance Margin)
+- Liquidations are executed at mark price
+- Insurance fund absorbs losses exceeding margin
+- All liquidations broadcast in real-time with full details
 
 ## Participant Types
 
 ### 1. Market Makers
 - Provide liquidity by quoting bid/ask spreads
 - Inventory, P&L, and **leverage** fully visible
-- Can be human or algorithmic
+- Can be human or bot
 - Earn spread, take inventory risk
 
-### 2. Real Traders (Humans)
+### 2. Human Traders
 - Manual trading via web interface
 - All positions, history, and **leverage choices** public
 - Compete on strategy, not information
 
 ### 3. Bot Traders
-- Algorithmic traders with open-source or disclosed strategies
-- Must register and be identifiable
+- Algorithmic traders using REST API
+- Must register with `type: bot`
 - Performance metrics and **leverage usage** public
-- Creates a competitive algo arena
+- No special SDK needed - just use the REST API
 
 ## Data Model
 
@@ -90,12 +89,10 @@ Every trader's leverage is **publicly visible**:
   "id": "uuid",
   "username": "string",
   "type": "human | bot | market_maker",
-  "api_key_hash": "string",
-  "created_at": "datetime",
+  "balance": "decimal",
   "total_pnl": "decimal",
   "trade_count": "int",
-  "max_leverage_used": "int",
-  "current_leverage": "int"
+  "max_leverage_used": "int"
 }
 ```
 
@@ -109,9 +106,7 @@ Every trader's leverage is **publicly visible**:
   "leverage": "int",
   "margin": "decimal",
   "unrealized_pnl": "decimal",
-  "realized_pnl": "decimal",
-  "liquidation_price": "decimal",
-  "updated_at": "datetime"
+  "liquidation_price": "decimal"
 }
 ```
 
@@ -120,7 +115,6 @@ Every trader's leverage is **publicly visible**:
 {
   "id": "uuid",
   "timestamp": "datetime",
-  "instrument": "R.index",
   "price": "decimal",
   "size": "decimal",
   "buyer_id": "uuid",
@@ -128,60 +122,44 @@ Every trader's leverage is **publicly visible**:
   "buyer_leverage": "int",
   "seller_leverage": "int",
   "buyer_effect": "open | close | liquidation",
-  "seller_effect": "open | close | liquidation",
-  "buyer_new_position": "decimal",
-  "seller_new_position": "decimal"
+  "seller_effect": "open | close | liquidation"
 }
 ```
 
-### Open Interest Breakdown
+### Liquidation Record
 ```json
 {
-  "instrument": "R.index",
-  "timestamp": "datetime",
-  "total_oi": "decimal",
-  "long_positions": "int",
-  "short_positions": "int",
-  "avg_long_leverage": "decimal",
-  "avg_short_leverage": "decimal",
-  "new_longs_opened": "int",
-  "new_shorts_opened": "int",
-  "longs_closed": "int",
-  "shorts_closed": "int",
-  "longs_liquidated": "int",
-  "shorts_liquidated": "int"
+  "id": "uuid",
+  "trader_id": "uuid",
+  "side": "long | short",
+  "size": "decimal",
+  "entry_price": "decimal",
+  "liquidation_price": "decimal",
+  "mark_price": "decimal",
+  "leverage": "int",
+  "loss": "decimal",
+  "insurance_fund_hit": "boolean",
+  "timestamp": "datetime"
 }
 ```
 
 ## Technical Architecture
 
-### Backend
+### Backend (Go)
 - **Language**: Go 1.21+
-  - Excellent concurrency (goroutines)
-  - Strong typing, single binary deployment
-  - High performance for matching engine
 - **Router**: chi/v5
 - **WebSocket**: gorilla/websocket
 - **Decimals**: shopspring/decimal
-- **Config**: YAML config file
-- **Auth**: JWT tokens with API keys
+- **Config**: YAML
+- **Auth**: JWT + API keys
 
-### Database: PostgreSQL
-**Why PostgreSQL?**
-- Battle-tested for financial applications
-- ACID compliance for trade integrity
-- JSON support for flexible data
-- Excellent Go drivers (pgx)
-- Can add TimescaleDB extension later for time-series optimization
-- Rich ecosystem (backups, replication, monitoring)
-
-**Schema Design**:
+### Database (PostgreSQL)
 - `traders` - User accounts and stats
 - `positions` - Current open positions
 - `orders` - Active and historical orders
 - `trades` - Complete trade history
 - `liquidations` - Liquidation events
-- `funding_payments` - Funding rate history
+- `insurance_fund` - Fund balance
 
 ### Project Structure
 ```
@@ -198,16 +176,13 @@ trade.re/
 │   ├── auth/                # Authentication
 │   ├── db/                  # Database layer
 │   └── ws/                  # WebSocket hub
-├── sdk/
-│   ├── go/                  # Go SDK
-│   ├── python/              # Python SDK
-│   └── typescript/          # TypeScript SDK
-├── web/                     # Frontend (React/Next.js)
-├── context.md
+├── web/                     # Frontend (Next.js)
+├── schema.sql               # Database schema
+├── context.md               # This file
 └── README.md
 ```
 
-### Configuration File (config.yaml)
+### Configuration (config.yaml)
 ```yaml
 server:
   port: 8080
@@ -225,7 +200,6 @@ rindex:
   tick_size: 0.01
   min_order_size: 0.001
   max_leverage: 150
-  funding_interval_hours: 8
 
 auth:
   jwt_secret: ${JWT_SECRET}
@@ -234,37 +208,39 @@ auth:
 liquidation:
   check_interval_ms: 100
   insurance_fund_initial: 1000000
+
+game:
+  starting_balance: 10000
 ```
 
 ### API Endpoints
 ```
 # Health & Info
 GET  /health
-GET  /api/v1/config                        # Public config (starting price, etc.)
+GET  /api/v1/config                        # Public config
 
 # Auth
-POST /api/v1/auth/register                 # Register new trader
+POST /api/v1/auth/register                 # Register trader
 POST /api/v1/auth/login                    # Get JWT token
-POST /api/v1/auth/api-key                  # Generate API key (for bots)
+POST /api/v1/auth/api-key                  # Generate API key
 
-# Traders (Public - Transparency!)
-GET  /api/v1/traders                       # List all traders
-GET  /api/v1/traders/{id}                  # Trader details + leverage stats
-GET  /api/v1/traders/{id}/positions        # Trader positions with leverage
+# Traders (Public!)
+GET  /api/v1/traders                       # All traders
+GET  /api/v1/traders/{id}                  # Trader details
+GET  /api/v1/traders/{id}/positions        # Trader positions
 GET  /api/v1/traders/{id}/trades           # Trade history
 
-# R.index Market
+# Market (Public!)
 GET  /api/v1/market/orderbook              # Order book
-GET  /api/v1/market/positions              # ALL positions (transparency!)
+GET  /api/v1/market/positions              # ALL positions
 GET  /api/v1/market/oi                     # Open interest breakdown
 GET  /api/v1/market/trades                 # Recent trades
 GET  /api/v1/market/liquidations           # Recent liquidations
-GET  /api/v1/market/funding                # Current funding rate
+GET  /api/v1/market/stats                  # Market statistics
 
 # Trading (Authenticated)
-POST   /api/v1/orders                      # Submit order (includes leverage)
+POST   /api/v1/orders                      # Submit order
 DELETE /api/v1/orders/{id}                 # Cancel order
-PUT    /api/v1/positions/leverage          # Adjust position leverage
 POST   /api/v1/positions/close             # Close position
 
 # WebSocket
@@ -273,94 +249,51 @@ GET /ws                                    # Real-time feed
 
 ### WebSocket Events
 ```json
-{"type": "trade", "data": {...}}           // Every trade with leverage info
+{"type": "trade", "data": {...}}           // Every trade
 {"type": "order", "data": {...}}           // Order updates
-{"type": "position", "data": {...}}        // Position changes (with leverage)
-{"type": "liquidation", "data": {...}}     // Liquidation events
+{"type": "position", "data": {...}}        // Position changes
+{"type": "liquidation", "data": {...}}     // Liquidations
 {"type": "orderbook", "data": {...}}       // Book updates
-{"type": "funding", "data": {...}}         // Funding rate updates
 ```
 
 ## Liquidation Engine
 
 ### How It Works
-1. **Continuous Monitoring**: Check all positions every 100ms
-2. **Mark Price**: Use order book mid-price as mark
-3. **Liquidation Trigger**: When mark price crosses liquidation price
-4. **Execution Order**:
-   - Try to close at market price
-   - Insurance fund absorbs losses
-   - If insurance depleted, trigger ADL
+1. **Continuous Monitoring**: Check positions every 100ms
+2. **Mark Price**: Order book mid-price
+3. **Trigger**: When mark crosses liquidation price
+4. **Execution**: Close at market, insurance fund absorbs excess loss
 
 ### Insurance Fund
-- Seeded with configurable initial amount
-- Grows from liquidation profits
-- Depletes when liquidation losses exceed position margin
-- Balance is public (transparency!)
-
-### Auto-Deleveraging (ADL)
-When insurance fund is depleted:
-1. Rank opposite-side traders by profit + leverage
-2. Force-close highest-ranked positions to cover
-3. Notify affected traders in real-time
-
-## Bot SDK
-
-### Supported Languages
-- **Go**: Native, first-class support
-- **Python**: For quant/ML strategies
-- **TypeScript**: For web-based bots
-
-### SDK Features
-```python
-# Python SDK Example
-from tradere import Client
-
-client = Client(api_key="your-api-key")
-
-# Get market data
-orderbook = client.get_orderbook()
-positions = client.get_all_positions()  # See everyone's positions!
-
-# Place order with leverage
-order = client.place_order(
-    side="buy",
-    size=1.0,
-    price=1000.0,
-    leverage=50  # Public!
-)
-
-# Stream real-time data
-async for trade in client.stream_trades():
-    print(f"{trade.buyer_id} bought from {trade.seller_id} at {trade.price}")
-    print(f"Buyer leverage: {trade.buyer_leverage}x")
-```
+- Seeded with configurable initial amount (default: 1M)
+- Grows from liquidation profits (margin > loss)
+- Depletes when loss > margin
+- Balance is public
 
 ## Web Frontend
 
 ### Tech Stack
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 14
 - **Styling**: Tailwind CSS
-- **Charts**: Lightweight Charts (TradingView)
+- **Charts**: TradingView Lightweight Charts
 - **State**: Zustand
-- **Real-time**: Native WebSocket
+- **Real-time**: WebSocket
 
-### Key Views
-1. **Trading View**: Chart, order book, order entry, positions
-2. **Transparency Dashboard**: All positions, OI breakdown, leverage distribution
-3. **Leaderboard**: Rankings by P&L, filterable by leverage tier
-4. **Trader Profile**: Public history, stats, leverage usage
-5. **Liquidation Feed**: Real-time liquidation stream
+### Pages
+1. **Trading** (`/`) - Chart, order book, trade form, positions
+2. **All Positions** (`/positions`) - Transparency dashboard
+3. **Leaderboard** (`/leaderboard`) - P&L rankings by leverage tier
+4. **Liquidations** (`/liquidations`) - Real-time liquidation feed
+5. **Trader Profile** (`/trader/{id}`) - Public history and stats
 
 ## Authentication
 
-### Simple Auth Flow
-1. **Registration**: Username + password → JWT token
-2. **Login**: Credentials → JWT token
-3. **API Key**: For bots, generate long-lived API key
-4. **Token Refresh**: Auto-refresh before expiry
+### Flow
+1. **Register**: Username + password → account created
+2. **Login**: Credentials → JWT token (24h expiry)
+3. **API Key**: Generate long-lived key for bots
 
-### What's Public vs Private
+### Public vs Private
 | Data | Visibility |
 |------|------------|
 | Positions | Public |
@@ -368,52 +301,48 @@ async for trade in client.stream_trades():
 | Trade history | Public |
 | P&L | Public |
 | Order book | Public |
-| Open orders | Public |
+| Liquidations | Public |
 | Password | Private |
 | API keys | Private |
-| JWT tokens | Private |
 
 ## Roadmap
 
-### Phase 1: Core (Current Sprint)
+### Phase 1: Core ✅ DONE
 - [x] Matching engine
-- [x] Order book
-- [x] REST API skeleton
+- [x] Order book with FIFO
+- [x] REST API
 - [x] WebSocket feeds
-- [ ] **R.index instrument** (replacing BTC/ETH)
-- [ ] **Leverage system (1-150x)**
-- [ ] **PostgreSQL persistence**
-- [ ] **Config file support**
-- [ ] **Simple auth (JWT)**
-- [ ] **Liquidation engine**
-- [ ] **Bot SDK (Go)**
-- [ ] **Basic web frontend**
+- [x] Domain types with leverage
+- [x] PostgreSQL schema
+- [x] Config system
+- [x] Auth (JWT + API keys)
+- [x] Liquidation engine
+- [x] Basic frontend (trading, positions)
 
-### Phase 2: Polish
-- [ ] Python SDK
-- [ ] TypeScript SDK
-- [ ] Funding rate mechanism
-- [ ] Insurance fund
-- [ ] ADL system
+### Phase 2: Frontend (Current)
+- [ ] Leaderboard page
+- [ ] Liquidations page
+- [ ] Trader profile page
+- [ ] Wire up API to frontend
+- [ ] Real-time WebSocket in UI
+
+### Phase 3: Polish
 - [ ] Historical data API
+- [ ] Trade history search
+- [ ] Position history
+- [ ] Mobile responsive
 
-### Phase 3: Social
-- [ ] Leaderboards
-- [ ] Trader profiles
-- [ ] Follow system
+### Phase 4: Social
+- [ ] Follow traders
 - [ ] Activity feed
-
-### Phase 4: Advanced
 - [ ] Tournaments
-- [ ] Strategy marketplace
-- [ ] Mobile app
 
 ## Development
 
 ### Prerequisites
 - Go 1.21+
 - PostgreSQL 15+
-- Node.js 18+ (for frontend)
+- Node.js 18+
 
 ### Quick Start
 ```bash
@@ -421,37 +350,45 @@ async for trade in client.stream_trades():
 git clone https://github.com/thatreguy/trade.re.git
 cd trade.re
 
-# Setup database
+# Database
 createdb tradere
 psql tradere < schema.sql
 
-# Configure
-cp config/config.example.yaml config/config.yaml
-# Edit config.yaml with your settings
-
-# Run server
+# Backend
 go run ./cmd/server
 
-# Run frontend (separate terminal)
+# Frontend
 cd web && npm install && npm run dev
 ```
 
-### Environment Variables
+### Bot Trading (REST API)
+Bots don't need a special SDK - just use the REST API:
+
 ```bash
-DB_PASSWORD=your_db_password
-JWT_SECRET=your_jwt_secret_min_32_chars
+# Register
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "my_bot", "password": "secret", "type": "bot"}'
+
+# Login and get token
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "my_bot", "password": "secret"}' | jq -r '.token')
+
+# Place order
+curl -X POST http://localhost:8080/api/v1/orders \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"side": "buy", "type": "limit", "price": "1000", "size": "1", "leverage": 10}'
+
+# See ALL positions (transparency!)
+curl http://localhost:8080/api/v1/market/positions
 ```
 
-## Open Questions
+## Design Decisions
 
-1. ~~Should there be virtual currency?~~ → Yes, play money with configurable starting balance
-2. How to prevent wash trading? → Same-trader order matching already prevented
-3. What anti-manipulation rules? → Position limits, order rate limits
-4. Bot vs human fairness? → Separate leaderboards, same rules
-5. ~~Leverage visibility?~~ → **Yes, fully public**
-
-## References
-
-- [BitMEX Perpetual Contracts](https://www.bitmex.com/app/perpetualContractsGuide)
-- [Binance Futures Leverage](https://www.binance.com/en/support/faq/leverage-and-margin-of-usd%E2%93%A2-m-futures)
-- [Deribit Liquidation](https://www.deribit.com/kb/liquidations)
+1. **No Funding Rate**: Keeps the game simpler. Price discovery is pure supply/demand.
+2. **Single Instrument**: Maximum liquidity concentration, simpler UX.
+3. **Public Leverage**: Core differentiator - see who's taking risk.
+4. **REST for Bots**: No SDK complexity - standard HTTP works everywhere.
+5. **PostgreSQL**: Battle-tested, ACID compliant, great for financial data.
