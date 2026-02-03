@@ -391,7 +391,7 @@ func (me *MatchingEngine) GetOpenInterestBreakdown(instrument string) *domain.Op
 
 		if pos.Size.IsPositive() {
 			breakdown.LongPositions++
-			breakdown.TotalOI += pos.Size.IntPart()
+			breakdown.TotalOI = breakdown.TotalOI.Add(pos.Size)
 		} else {
 			breakdown.ShortPositions++
 		}

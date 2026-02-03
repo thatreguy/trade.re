@@ -1,0 +1,36 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+
+database:
+  host: localhost
+  port: 5432
+  name: tradere
+  user: tradere
+  password: "" # Set via DB_PASSWORD env var
+  max_connections: 25
+
+rindex:
+  starting_price: 1000
+  tick_size: 0.01
+  min_order_size: 0.001
+  max_leverage: 150
+  funding_interval_hours: 8
+
+auth:
+  jwt_secret: "" # Set via JWT_SECRET env var (min 32 chars)
+  token_expiry_hours: 24
+  api_key_length: 32
+
+liquidation:
+  check_interval_ms: 100
+  insurance_fund_initial: 1000000
+  maintenance_margins:
+    conservative: 0.005   # 1-10x: 0.5%
+    moderate: 0.01        # 11-50x: 1%
+    aggressive: 0.02      # 51-100x: 2%
+    degen: 0.05           # 101-150x: 5%
+
+game:
+  starting_balance: 10000  # Each trader starts with this
+  currency_symbol: "$"

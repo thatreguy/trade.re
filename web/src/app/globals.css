@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --trade-green: #00c853;
+  --trade-red: #ff1744;
+  --trade-bg: #0d1117;
+  --trade-card: #161b22;
+  --trade-border: #30363d;
+}
+
+body {
+  background-color: var(--trade-bg);
+  color: #e6edf3;
+}
+
+.long {
+  color: var(--trade-green);
+}
+
+.short {
+  color: var(--trade-red);
+}
+
+.leverage-conservative {
+  background-color: #238636;
+}
+
+.leverage-moderate {
+  background-color: #9e6a03;
+}
+
+.leverage-aggressive {
+  background-color: #da3633;
+}
+
+.leverage-degen {
+  background-color: #8957e5;
+}
