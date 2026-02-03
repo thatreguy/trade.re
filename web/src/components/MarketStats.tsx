@@ -1,19 +1,31 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useMarketStore } from '@/store/market'
+
 export default function MarketStats() {
-  // Mock market data
-  const stats = {
-    lastPrice: 1000.75,
-    change24h: 2.35,
-    high24h: 1025.00,
-    low24h: 975.50,
-    volume24h: 1250000,
-    openInterest: 85000,
-    fundingRate: 0.0001,
-    insuranceFund: 1000000,
+  const { marketStats, fetchMarketStats } = useMarketStore()
+
+  useEffect(() => {
+    fetchMarketStats()
+    const interval = setInterval(fetchMarketStats, 5000) // Refresh every 5s
+    return () => clearInterval(interval)
+  }, [fetchMarketStats])
+
+  // Default values while loading
+  const stats = marketStats || {
+    last_price: 1000,
+    high_24h: 1000,
+    low_24h: 1000,
+    volume_24h: 0,
+    open_interest: 0,
+    insurance_fund: 1000000,
   }
 
-  const isPositive = stats.change24h >= 0
+  const change24h = stats.high_24h > 0
+    ? ((stats.last_price - stats.low_24h) / stats.low_24h * 100)
+    : 0
+  const isPositive = change24h >= 0
 
   return (
     <div className="bg-trade-card rounded-lg border border-trade-border p-4">
@@ -22,10 +34,10 @@ export default function MarketStats() {
         <div className="flex items-center space-x-6">
           <div>
             <div className="text-2xl font-bold">
-              ${stats.lastPrice.toFixed(2)}
+              ${stats.last_price.toFixed(2)}
             </div>
             <div className={`text-sm ${isPositive ? 'text-trade-green' : 'text-trade-red'}`}>
-              {isPositive ? '+' : ''}{stats.change24h.toFixed(2)}%
+              {isPositive ? '+' : ''}{change24h.toFixed(2)}%
             </div>
           </div>
 
@@ -33,37 +45,34 @@ export default function MarketStats() {
 
           <div className="text-sm">
             <div className="text-gray-500">24h High</div>
-            <div>${stats.high24h.toFixed(2)}</div>
+            <div>${stats.high_24h.toFixed(2)}</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">24h Low</div>
-            <div>${stats.low24h.toFixed(2)}</div>
+            <div>${stats.low_24h.toFixed(2)}</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">24h Volume</div>
-            <div>${(stats.volume24h / 1000000).toFixed(2)}M</div>
+            <div>${(stats.volume_24h / 1000).toFixed(1)}K</div>
           </div>
         </div>
 
-        {/* OI & Funding */}
+        {/* OI & Insurance */}
         <div className="flex items-center space-x-6">
           <div className="text-sm">
             <div className="text-gray-500">Open Interest</div>
-            <div>${(stats.openInterest / 1000).toFixed(0)}K</div>
-          </div>
-
-          <div className="text-sm">
-            <div className="text-gray-500">Funding Rate</div>
-            <div className={stats.fundingRate >= 0 ? 'text-trade-green' : 'text-trade-red'}>
-              {(stats.fundingRate * 100).toFixed(4)}%
-            </div>
+            <div>${(stats.open_interest / 1000).toFixed(1)}K</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">Insurance Fund</div>
-            <div className="text-purple-400">${(stats.insuranceFund / 1000000).toFixed(2)}M</div>
+            <div className="text-purple-400">${(stats.insurance_fund / 1000000).toFixed(2)}M</div>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            24/7 Market
           </div>
         </div>
       </div>

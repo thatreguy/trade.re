@@ -1,15 +1,49 @@
 'use client'
 
 import { useState } from 'react'
+import { useUserStore } from '@/store/user'
+import { useMarketStore } from '@/store/market'
+import { api } from '@/lib/api'
 
 export default function TradeForm() {
+  const { isAuthenticated, fetchUserData } = useUserStore()
+  const { marketStats } = useMarketStore()
+
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit')
-  const [price, setPrice] = useState('1000.00')
+  const [price, setPrice] = useState(marketStats?.last_price?.toFixed(2) || '1000.00')
   const [size, setSize] = useState('1.0')
   const [leverage, setLeverage] = useState(10)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const leverageTier = leverage <= 10 ? 'conservative' : leverage <= 50 ? 'moderate' : leverage <= 100 ? 'aggressive' : 'degen'
+
+  const handleSubmit = async () => {
+    if (!isAuthenticated) {
+      setError('Please login to trade')
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      await api.placeOrder({
+        side,
+        type: orderType,
+        price: orderType === 'limit' ? parseFloat(price) : undefined,
+        size: parseFloat(size),
+        leverage,
+      })
+      await fetchUserData()
+      setSize('1.0') // Reset size after order
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Order failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="bg-trade-card rounded-lg border border-trade-border p-4">
@@ -124,13 +158,26 @@ export default function TradeForm() {
         </div>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="mb-4 p-2 bg-red-900/30 border border-red-700 rounded text-xs text-red-300">
+          {error}
+        </div>
+      )}
+
       {/* Submit Button */}
       <button
+        onClick={handleSubmit}
+        disabled={isSubmitting || !isAuthenticated}
         className={`w-full py-3 rounded font-bold ${
           side === 'buy' ? 'bg-trade-green hover:bg-green-600' : 'bg-trade-red hover:bg-red-600'
-        } text-white`}
+        } text-white disabled:opacity-50 disabled:cursor-not-allowed`}
       >
-        {side === 'buy' ? 'Long' : 'Short'} R.index
+        {!isAuthenticated
+          ? 'Login to Trade'
+          : isSubmitting
+          ? 'Submitting...'
+          : `${side === 'buy' ? 'Long' : 'Short'} R.index`}
       </button>
     </div>
   )

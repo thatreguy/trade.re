@@ -1,48 +1,25 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-
-interface Position {
-  traderId: string
-  username: string
-  traderType: string
-  size: number
-  entryPrice: number
-  leverage: number
-  margin: number
-  unrealizedPnl: number
-  liquidationPrice: number
-}
+import Link from 'next/link'
+import { useMarketStore } from '@/store/market'
 
 export default function AllPositionsPage() {
-  const [positions, setPositions] = useState<Position[]>([])
+  const { allPositions, fetchAllPositions } = useMarketStore()
   const [filter, setFilter] = useState<'all' | 'long' | 'short'>('all')
   const [leverageFilter, setLeverageFilter] = useState<string>('all')
 
-  // Mock data
   useEffect(() => {
-    setPositions([
-      { traderId: '1', username: 'whale_trader', traderType: 'human', size: 100, entryPrice: 995.00, leverage: 50, margin: 1990, unrealizedPnl: 575, liquidationPrice: 975.10 },
-      { traderId: '2', username: 'mm_bot_1', traderType: 'market_maker', size: -75, entryPrice: 1002.00, leverage: 10, margin: 7515, unrealizedPnl: -112.50, liquidationPrice: 1101.20 },
-      { traderId: '3', username: 'degen_andy', traderType: 'human', size: 25, entryPrice: 998.00, leverage: 150, margin: 166.33, unrealizedPnl: 68.75, liquidationPrice: 991.35 },
-      { traderId: '4', username: 'algo_sniper', traderType: 'bot', size: -50, entryPrice: 1001.50, leverage: 25, margin: 2003, unrealizedPnl: 37.50, liquidationPrice: 1041.16 },
-      { traderId: '5', username: 'conservative_carl', traderType: 'human', size: 10, entryPrice: 990.00, leverage: 3, margin: 3300, unrealizedPnl: 107.50, liquidationPrice: 660.00 },
-      { traderId: '6', username: 'trend_follower', traderType: 'bot', size: 30, entryPrice: 1000.00, leverage: 75, margin: 400, unrealizedPnl: 22.50, liquidationPrice: 986.67 },
-    ])
-  }, [])
+    fetchAllPositions()
+    const interval = setInterval(fetchAllPositions, 3000) // Refresh every 3s
+    return () => clearInterval(interval)
+  }, [fetchAllPositions])
+
+  const positions = allPositions
 
   const getLeverageBadge = (leverage: number) => {
     const tier = leverage <= 10 ? 'conservative' : leverage <= 50 ? 'moderate' : leverage <= 100 ? 'aggressive' : 'degen'
     return `leverage-${tier}`
-  }
-
-  const getTraderTypeBadge = (type: string) => {
-    switch (type) {
-      case 'human': return 'bg-blue-600'
-      case 'bot': return 'bg-orange-600'
-      case 'market_maker': return 'bg-purple-600'
-      default: return 'bg-gray-600'
-    }
   }
 
   const filteredPositions = positions.filter(p => {
@@ -55,10 +32,16 @@ export default function AllPositionsPage() {
     return true
   })
 
-  const totalLong = positions.filter(p => p.size > 0).reduce((sum, p) => sum + p.size, 0)
-  const totalShort = Math.abs(positions.filter(p => p.size < 0).reduce((sum, p) => sum + p.size, 0))
-  const avgLongLeverage = positions.filter(p => p.size > 0).reduce((sum, p) => sum + p.leverage, 0) / positions.filter(p => p.size > 0).length || 0
-  const avgShortLeverage = positions.filter(p => p.size < 0).reduce((sum, p) => sum + p.leverage, 0) / positions.filter(p => p.size < 0).length || 0
+  const longPositions = positions.filter(p => p.size > 0)
+  const shortPositions = positions.filter(p => p.size < 0)
+  const totalLong = longPositions.reduce((sum, p) => sum + p.size, 0)
+  const totalShort = Math.abs(shortPositions.reduce((sum, p) => sum + p.size, 0))
+  const avgLongLeverage = longPositions.length > 0
+    ? longPositions.reduce((sum, p) => sum + p.leverage, 0) / longPositions.length
+    : 0
+  const avgShortLeverage = shortPositions.length > 0
+    ? shortPositions.reduce((sum, p) => sum + p.leverage, 0) / shortPositions.length
+    : 0
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -128,7 +111,6 @@ export default function AllPositionsPage() {
           <thead className="bg-trade-bg">
             <tr className="text-left text-sm text-gray-500">
               <th className="px-4 py-3">Trader</th>
-              <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Side</th>
               <th className="px-4 py-3">Size</th>
               <th className="px-4 py-3">Entry</th>
@@ -139,33 +121,40 @@ export default function AllPositionsPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredPositions.map((pos) => (
-              <tr key={pos.traderId} className="border-t border-trade-border hover:bg-trade-bg/50">
-                <td className="px-4 py-3 font-medium">{pos.username}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${getTraderTypeBadge(pos.traderType)}`}>
-                    {pos.traderType}
-                  </span>
+            {filteredPositions.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                  No open positions
                 </td>
-                <td className="px-4 py-3">
-                  <span className={pos.size > 0 ? 'text-trade-green' : 'text-trade-red'}>
-                    {pos.size > 0 ? 'LONG' : 'SHORT'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{Math.abs(pos.size).toFixed(2)}</td>
-                <td className="px-4 py-3">${pos.entryPrice.toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${getLeverageBadge(pos.leverage)}`}>
-                    {pos.leverage}x
-                  </span>
-                </td>
-                <td className="px-4 py-3">${pos.margin.toFixed(2)}</td>
-                <td className={`px-4 py-3 ${pos.unrealizedPnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
-                  {pos.unrealizedPnl >= 0 ? '+' : ''}${pos.unrealizedPnl.toFixed(2)}
-                </td>
-                <td className="px-4 py-3 text-trade-red">${pos.liquidationPrice.toFixed(2)}</td>
               </tr>
-            ))}
+            ) : (
+              filteredPositions.map((pos) => (
+                <tr key={pos.trader_id} className="border-t border-trade-border hover:bg-trade-bg/50">
+                  <td className="px-4 py-3 font-medium">
+                    <Link href={`/trader/${pos.trader_id}`} className="hover:text-blue-400">
+                      {pos.trader_id.slice(0, 8)}...
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={pos.size > 0 ? 'text-trade-green' : 'text-trade-red'}>
+                      {pos.size > 0 ? 'LONG' : 'SHORT'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{Math.abs(pos.size).toFixed(3)}</td>
+                  <td className="px-4 py-3">${pos.entry_price.toFixed(2)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded text-xs ${getLeverageBadge(pos.leverage)}`}>
+                      {pos.leverage}x
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">${pos.margin.toFixed(2)}</td>
+                  <td className={`px-4 py-3 ${pos.unrealized_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
+                    {pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-trade-red">${pos.liquidation_price.toFixed(2)}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

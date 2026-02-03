@@ -1,13 +1,38 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import OrderBook from '@/components/OrderBook'
 import TradeForm from '@/components/TradeForm'
 import RecentTrades from '@/components/RecentTrades'
 import PositionPanel from '@/components/PositionPanel'
 import MarketStats from '@/components/MarketStats'
+import { useMarketStore } from '@/store/market'
+import { useUserStore } from '@/store/user'
 
 export default function TradePage() {
+  const { connectWebSocket, disconnectWebSocket, fetchAll } = useMarketStore()
+  const { checkAuth, fetchUserData, isAuthenticated } = useUserStore()
+
+  useEffect(() => {
+    // Check if user is authenticated and fetch initial data
+    checkAuth()
+    fetchAll()
+
+    // Connect WebSocket for real-time updates
+    connectWebSocket()
+
+    return () => {
+      disconnectWebSocket()
+    }
+  }, [checkAuth, fetchAll, connectWebSocket, disconnectWebSocket])
+
+  // Fetch user data when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchUserData()
+    }
+  }, [isAuthenticated, fetchUserData])
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* Market Stats Bar */}

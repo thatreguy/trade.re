@@ -2,39 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-
-interface Trader {
-  id: string
-  username: string
-  type: string
-  balance: number
-  totalPnl: number
-  tradeCount: number
-  maxLeverageUsed: number
-  winRate: number
-}
+import { useMarketStore } from '@/store/market'
+import { Trader } from '@/lib/api'
 
 export default function LeaderboardPage() {
-  const [traders, setTraders] = useState<Trader[]>([])
-  const [sortBy, setSortBy] = useState<'pnl' | 'trades' | 'winrate'>('pnl')
+  const { traders, fetchTraders } = useMarketStore()
+  const [sortBy, setSortBy] = useState<'pnl' | 'trades' | 'balance'>('pnl')
   const [leverageFilter, setLeverageFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
-  // Mock data
   useEffect(() => {
-    setTraders([
-      { id: '1', username: 'whale_master', type: 'human', balance: 125000, totalPnl: 115000, tradeCount: 342, maxLeverageUsed: 50, winRate: 68 },
-      { id: '2', username: 'algo_king', type: 'bot', balance: 98500, totalPnl: 88500, tradeCount: 1205, maxLeverageUsed: 25, winRate: 55 },
-      { id: '3', username: 'degen_lord', type: 'human', balance: 75200, totalPnl: 65200, tradeCount: 89, maxLeverageUsed: 150, winRate: 72 },
-      { id: '4', username: 'mm_provider', type: 'market_maker', balance: 52000, totalPnl: 42000, tradeCount: 5420, maxLeverageUsed: 10, winRate: 51 },
-      { id: '5', username: 'steady_eddie', type: 'human', balance: 35000, totalPnl: 25000, tradeCount: 156, maxLeverageUsed: 5, winRate: 62 },
-      { id: '6', username: 'risk_taker', type: 'human', balance: 28000, totalPnl: 18000, tradeCount: 67, maxLeverageUsed: 100, winRate: 58 },
-      { id: '7', username: 'sniper_bot', type: 'bot', balance: 22000, totalPnl: 12000, tradeCount: 890, maxLeverageUsed: 75, winRate: 49 },
-      { id: '8', username: 'newbie_trader', type: 'human', balance: 8500, totalPnl: -1500, tradeCount: 23, maxLeverageUsed: 20, winRate: 35 },
-      { id: '9', username: 'rekt_andy', type: 'human', balance: 2100, totalPnl: -7900, tradeCount: 45, maxLeverageUsed: 150, winRate: 22 },
-      { id: '10', username: 'liquidated_larry', type: 'human', balance: 0, totalPnl: -10000, tradeCount: 12, maxLeverageUsed: 150, winRate: 8 },
-    ])
-  }, [])
+    fetchTraders()
+    const interval = setInterval(fetchTraders, 10000) // Refresh every 10s
+    return () => clearInterval(interval)
+  }, [fetchTraders])
 
   const getLeverageTier = (leverage: number) => {
     if (leverage <= 10) return 'conservative'
@@ -59,21 +40,23 @@ export default function LeaderboardPage() {
   const filteredTraders = traders
     .filter(t => {
       if (typeFilter !== 'all' && t.type !== typeFilter) return false
-      if (leverageFilter !== 'all' && getLeverageTier(t.maxLeverageUsed) !== leverageFilter) return false
+      if (leverageFilter !== 'all' && getLeverageTier(t.max_leverage_used) !== leverageFilter) return false
       return true
     })
     .sort((a, b) => {
       switch (sortBy) {
-        case 'pnl': return b.totalPnl - a.totalPnl
-        case 'trades': return b.tradeCount - a.tradeCount
-        case 'winrate': return b.winRate - a.winRate
+        case 'pnl': return b.total_pnl - a.total_pnl
+        case 'trades': return b.trade_count - a.trade_count
+        case 'balance': return b.balance - a.balance
         default: return 0
       }
     })
 
-  const totalPnlPositive = traders.filter(t => t.totalPnl > 0).length
-  const totalPnlNegative = traders.filter(t => t.totalPnl < 0).length
-  const avgLeverage = traders.reduce((sum, t) => sum + t.maxLeverageUsed, 0) / traders.length
+  const totalPnlPositive = traders.filter(t => t.total_pnl > 0).length
+  const totalPnlNegative = traders.filter(t => t.total_pnl < 0).length
+  const avgLeverage = traders.length > 0
+    ? traders.reduce((sum, t) => sum + t.max_leverage_used, 0) / traders.length
+    : 0
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -111,7 +94,7 @@ export default function LeaderboardPage() {
           >
             <option value="pnl">Total P&L</option>
             <option value="trades">Trade Count</option>
-            <option value="winrate">Win Rate</option>
+            <option value="balance">Balance</option>
           </select>
         </div>
 
@@ -156,46 +139,48 @@ export default function LeaderboardPage() {
               <th className="px-4 py-3">Balance</th>
               <th className="px-4 py-3">Total P&L</th>
               <th className="px-4 py-3">Trades</th>
-              <th className="px-4 py-3">Win Rate</th>
               <th className="px-4 py-3">Max Leverage</th>
             </tr>
           </thead>
           <tbody>
-            {filteredTraders.map((trader, index) => (
-              <tr key={trader.id} className="border-t border-trade-border hover:bg-trade-bg/50">
-                <td className="px-4 py-3 text-gray-500">
-                  {index + 1}
-                  {index === 0 && <span className="ml-1">🥇</span>}
-                  {index === 1 && <span className="ml-1">🥈</span>}
-                  {index === 2 && <span className="ml-1">🥉</span>}
-                </td>
-                <td className="px-4 py-3">
-                  <Link href={`/trader/${trader.id}`} className="font-medium hover:text-blue-400">
-                    {trader.username}
-                  </Link>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${getTraderTypeBadge(trader.type)}`}>
-                    {trader.type}
-                  </span>
-                </td>
-                <td className="px-4 py-3">${trader.balance.toLocaleString()}</td>
-                <td className={`px-4 py-3 font-medium ${trader.totalPnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
-                  {trader.totalPnl >= 0 ? '+' : ''}${trader.totalPnl.toLocaleString()}
-                </td>
-                <td className="px-4 py-3">{trader.tradeCount.toLocaleString()}</td>
-                <td className="px-4 py-3">
-                  <span className={trader.winRate >= 50 ? 'text-trade-green' : 'text-trade-red'}>
-                    {trader.winRate}%
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${getLeverageBadge(trader.maxLeverageUsed)}`}>
-                    {trader.maxLeverageUsed}x
-                  </span>
+            {filteredTraders.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  No traders found
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredTraders.map((trader, index) => (
+                <tr key={trader.id} className="border-t border-trade-border hover:bg-trade-bg/50">
+                  <td className="px-4 py-3 text-gray-500">
+                    {index + 1}
+                    {index === 0 && <span className="ml-1">🥇</span>}
+                    {index === 1 && <span className="ml-1">🥈</span>}
+                    {index === 2 && <span className="ml-1">🥉</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link href={`/trader/${trader.id}`} className="font-medium hover:text-blue-400">
+                      {trader.username}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded text-xs ${getTraderTypeBadge(trader.type)}`}>
+                      {trader.type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">${trader.balance.toLocaleString()}</td>
+                  <td className={`px-4 py-3 font-medium ${trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
+                    {trader.total_pnl >= 0 ? '+' : ''}${trader.total_pnl.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3">{trader.trade_count.toLocaleString()}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded text-xs ${getLeverageBadge(trader.max_leverage_used)}`}>
+                      {trader.max_leverage_used}x
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

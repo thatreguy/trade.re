@@ -2,7 +2,7 @@
 
 ## Vision
 
-Trade.re is a **fully transparent trading simulation game** where all market data, positions, and participant behavior are open for everyone to see. Unlike real markets where information asymmetry creates unfair advantages, Trade.re levels the playing field by making every piece of data public.
+Trade.re is a **fully transparent trading game** where participants trade a single instrument - **R.index** - representing collective sentiment on the global state of affairs. All market data, positions, and participant behavior are open for everyone to see. Unlike real markets where information asymmetry creates unfair advantages, Trade.re levels the playing field by making every piece of data public.
 
 ## Core Philosophy
 
@@ -22,12 +22,18 @@ Traditional OI just shows aggregate numbers. Trade.re breaks it down:
 
 ## The R.index
 
-Trade.re features a single tradeable instrument: **R.index** - a virtual perpetual index.
+Trade.re features a single tradeable instrument: **R.index** - a perpetual index representing the **collective sentiment on the global state of affairs**.
 
-### Why a Single Virtual Index?
+### What R.index Represents
+R.index is a crowdsourced barometer of global sentiment. When traders go long, they're expressing optimism about the world. When they short, they're expressing pessimism. The price emerges from the aggregate beliefs of all participants about how things are going globally - economically, politically, socially.
+
+- **Bullish on R.index** = "I think the world is doing well / will improve"
+- **Bearish on R.index** = "I think things are bad / will get worse"
+
+### Why a Single Index?
 - **Simplicity**: One market, maximum liquidity concentration
-- **Fairness**: No information edge from external price feeds
-- **Pure Gameplay**: Price is determined entirely by participant actions
+- **Collective Intelligence**: Price emerges from aggregate participant sentiment
+- **Pure Expression**: No external oracle - the crowd IS the signal
 - **Configurability**: Starting price set via config file
 
 ### R.index Specifications
@@ -39,6 +45,13 @@ Trade.re features a single tradeable instrument: **R.index** - a virtual perpetu
 | Tick Size | 0.01 |
 | Min Order Size | 0.001 |
 | Max Leverage | 150x |
+| Market Hours | **24/7** (always open) |
+| Daily Candle Start | 00:00 UTC (5:30 AM IST) |
+
+### Market Hours
+- **24/7 Trading**: The market never closes
+- **Daily Reset**: Statistics reset at 00:00 UTC (5:30 AM IST)
+- **Candle Alignment**: All daily candles start at 00:00 UTC
 
 ## Leverage System
 
@@ -237,6 +250,7 @@ GET  /api/v1/market/oi                     # Open interest breakdown
 GET  /api/v1/market/trades                 # Recent trades
 GET  /api/v1/market/liquidations           # Recent liquidations
 GET  /api/v1/market/stats                  # Market statistics
+GET  /api/v1/market/candles                # OHLCV candles (1m, 5m, 1h, 1d)
 
 # Trading (Authenticated)
 POST   /api/v1/orders                      # Submit order
@@ -286,6 +300,23 @@ GET /ws                                    # Real-time feed
 4. **Liquidations** (`/liquidations`) - Real-time liquidation feed
 5. **Trader Profile** (`/trader/{id}`) - Public history and stats
 
+### State Management (Zustand)
+Two stores in `web/src/store/`:
+
+**Market Store** (`market.ts`)
+- **State**: `orderBook`, `recentTrades`, `allPositions`, `recentLiquidations`, `marketStats`, `traders`
+- **Actions**: `fetchOrderBook()`, `fetchRecentTrades()`, `fetchAllPositions()`, `fetchAll()`, etc.
+- **WebSocket**: `connectWebSocket()` subscribes to real-time updates (trades, orderbook, positions, liquidations)
+- **Real-time handlers**: `addTrade()`, `updateOrderBook()`, `updatePosition()`, `addLiquidation()`
+
+**User Store** (`user.ts`)
+- **State**: `user`, `isAuthenticated`, `position`, `trades`
+- **Actions**: `login()`, `register()`, `logout()`, `checkAuth()`, `fetchUserData()`
+
+### API Client (`web/src/lib/`)
+- `api.ts` - REST API client with typed responses
+- `websocket.ts` - WebSocket client for real-time updates
+
 ## Authentication
 
 ### Flow
@@ -318,13 +349,15 @@ GET /ws                                    # Real-time feed
 - [x] Auth (JWT + API keys)
 - [x] Liquidation engine
 - [x] Basic frontend (trading, positions)
+- [x] Leaderboard page
+- [x] Liquidations page
+- [x] Trader profile page
 
-### Phase 2: Frontend (Current)
-- [ ] Leaderboard page
-- [ ] Liquidations page
-- [ ] Trader profile page
+### Phase 2: Integration (Current)
 - [ ] Wire up API to frontend
 - [ ] Real-time WebSocket in UI
+- [ ] TradingView chart integration
+- [ ] Candle data API (daily @ 00:00 UTC)
 
 ### Phase 3: Polish
 - [ ] Historical data API
@@ -387,8 +420,10 @@ curl http://localhost:8080/api/v1/market/positions
 
 ## Design Decisions
 
-1. **No Funding Rate**: Keeps the game simpler. Price discovery is pure supply/demand.
-2. **Single Instrument**: Maximum liquidity concentration, simpler UX.
-3. **Public Leverage**: Core differentiator - see who's taking risk.
+1. **No Funding Rate**: Keeps the game simpler. Price emerges purely from participant sentiment.
+2. **Single Instrument (R.index)**: One index representing global sentiment - maximum liquidity, clear meaning.
+3. **Public Leverage**: Core differentiator - see who's taking risk on their worldview.
 4. **REST for Bots**: No SDK complexity - standard HTTP works everywhere.
 5. **PostgreSQL**: Battle-tested, ACID compliant, great for financial data.
+6. **24/7 Market**: Always open, no weekends. Daily candles align to 00:00 UTC.
+7. **UTC for Everything**: All timestamps in UTC. Daily stats reset at midnight UTC (5:30 AM IST).

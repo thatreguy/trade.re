@@ -3,83 +3,57 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-
-interface Trader {
-  id: string
-  username: string
-  type: string
-  balance: number
-  totalPnl: number
-  tradeCount: number
-  maxLeverageUsed: number
-  createdAt: string
-}
-
-interface Position {
-  instrument: string
-  size: number
-  entryPrice: number
-  leverage: number
-  margin: number
-  unrealizedPnl: number
-  liquidationPrice: number
-}
-
-interface Trade {
-  id: string
-  timestamp: string
-  price: number
-  size: number
-  side: 'buy' | 'sell'
-  leverage: number
-  effect: string
-  pnl: number
-}
+import { api, Trader, Position, Trade } from '@/lib/api'
 
 export default function TraderProfilePage() {
   const params = useParams()
   const [trader, setTrader] = useState<Trader | null>(null)
-  const [position, setPosition] = useState<Position | null>(null)
+  const [positions, setPositions] = useState<Position[]>([])
   const [trades, setTrades] = useState<Trade[]>([])
   const [activeTab, setActiveTab] = useState<'position' | 'trades' | 'stats'>('position')
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Mock data
   useEffect(() => {
-    // Simulating fetching trader data
-    setTrader({
-      id: params.id as string,
-      username: 'whale_master',
-      type: 'human',
-      balance: 125000,
-      totalPnl: 115000,
-      tradeCount: 342,
-      maxLeverageUsed: 50,
-      createdAt: '2024-01-15'
-    })
+    const fetchData = async () => {
+      if (!params.id) return
 
-    setPosition({
-      instrument: 'R.index',
-      size: 50,
-      entryPrice: 995.00,
-      leverage: 25,
-      margin: 1990,
-      unrealizedPnl: 275,
-      liquidationPrice: 955.20
-    })
+      setIsLoading(true)
+      try {
+        const traderId = params.id as string
+        const [traderData, positionsData, tradesData] = await Promise.all([
+          api.getTrader(traderId),
+          api.getTraderPositions(traderId),
+          api.getTraderTrades(traderId, 50),
+        ])
+        setTrader(traderData)
+        setPositions(positionsData)
+        setTrades(tradesData)
+      } catch (e) {
+        console.error('Failed to fetch trader data:', e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-    setTrades([
-      { id: '1', timestamp: '10 min ago', price: 1000.50, size: 10, side: 'buy', leverage: 25, effect: 'open', pnl: 0 },
-      { id: '2', timestamp: '1 hour ago', price: 998.00, size: 15, side: 'buy', leverage: 25, effect: 'open', pnl: 0 },
-      { id: '3', timestamp: '2 hours ago', price: 1002.00, size: 5, side: 'sell', leverage: 50, effect: 'close', pnl: 25 },
-      { id: '4', timestamp: '3 hours ago', price: 995.00, size: 20, side: 'buy', leverage: 50, effect: 'open', pnl: 0 },
-      { id: '5', timestamp: '5 hours ago', price: 990.00, size: 30, side: 'sell', leverage: 10, effect: 'close', pnl: 150 },
-    ])
+    fetchData()
+    const interval = setInterval(fetchData, 10000) // Refresh every 10s
+    return () => clearInterval(interval)
   }, [params.id])
+
+  const position = positions[0] || null // R.index position
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="text-center py-12 text-gray-500">Loading...</div>
+      </div>
+    )
+  }
 
   if (!trader) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-gray-500">Trader not found</div>
       </div>
     )
   }
@@ -98,7 +72,15 @@ export default function TraderProfilePage() {
     }
   }
 
-  const pnlPercent = ((trader.totalPnl / 10000) * 100).toFixed(1) // Assuming 10k starting balance
+  const pnlPercent = ((trader.total_pnl / 10000) * 100).toFixed(1) // Assuming 10k starting balance
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString()
+    } catch {
+      return dateStr
+    }
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -112,12 +94,12 @@ export default function TraderProfilePage() {
                 {trader.type}
               </span>
             </div>
-            <p className="text-gray-500 text-sm mt-1">Member since {trader.createdAt}</p>
+            <p className="text-gray-500 text-sm mt-1">Member since {formatDate(trader.created_at)}</p>
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-500">Max Leverage Used</div>
-            <div className={`text-xl font-bold px-3 py-1 rounded inline-block ${getLeverageBadge(trader.maxLeverageUsed)}`}>
-              {trader.maxLeverageUsed}x
+            <div className={`text-xl font-bold px-3 py-1 rounded inline-block ${getLeverageBadge(trader.max_leverage_used)}`}>
+              {trader.max_leverage_used}x
             </div>
           </div>
         </div>
@@ -130,19 +112,19 @@ export default function TraderProfilePage() {
           </div>
           <div>
             <div className="text-sm text-gray-500">Total P&L</div>
-            <div className={`text-xl font-bold ${trader.totalPnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
-              {trader.totalPnl >= 0 ? '+' : ''}${trader.totalPnl.toLocaleString()}
+            <div className={`text-xl font-bold ${trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
+              {trader.total_pnl >= 0 ? '+' : ''}${trader.total_pnl.toLocaleString()}
               <span className="text-sm ml-1">({pnlPercent}%)</span>
             </div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Total Trades</div>
-            <div className="text-xl font-bold">{trader.tradeCount}</div>
+            <div className="text-xl font-bold">{trader.trade_count}</div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Avg Trade Size</div>
             <div className="text-xl font-bold">
-              ${(trader.balance / trader.tradeCount * 10).toFixed(0)}
+              {trader.trade_count > 0 ? `$${(trader.balance / trader.trade_count * 10).toFixed(0)}` : '-'}
             </div>
           </div>
         </div>
@@ -190,20 +172,20 @@ export default function TraderProfilePage() {
                   <span className={`text-xl font-bold ${position.size > 0 ? 'text-trade-green' : 'text-trade-red'}`}>
                     {position.size > 0 ? 'LONG' : 'SHORT'}
                   </span>
-                  <span className="text-xl">{Math.abs(position.size)} {position.instrument}</span>
+                  <span className="text-xl">{Math.abs(position.size).toFixed(3)} {position.instrument}</span>
                   <span className={`px-2 py-1 rounded text-xs ${getLeverageBadge(position.leverage)}`}>
                     {position.leverage}x
                   </span>
                 </div>
-                <div className={`text-xl font-bold ${position.unrealizedPnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
-                  {position.unrealizedPnl >= 0 ? '+' : ''}${position.unrealizedPnl.toFixed(2)}
+                <div className={`text-xl font-bold ${position.unrealized_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
+                  {position.unrealized_pnl >= 0 ? '+' : ''}${position.unrealized_pnl.toFixed(2)}
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-4">
                 <div>
                   <div className="text-sm text-gray-500">Entry Price</div>
-                  <div className="font-medium">${position.entryPrice.toFixed(2)}</div>
+                  <div className="font-medium">${position.entry_price.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Margin</div>
@@ -215,7 +197,7 @@ export default function TraderProfilePage() {
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Liquidation Price</div>
-                  <div className="font-medium text-trade-red">${position.liquidationPrice.toFixed(2)}</div>
+                  <div className="font-medium text-trade-red">${position.liquidation_price.toFixed(2)}</div>
                 </div>
               </div>
             </div>
@@ -239,31 +221,52 @@ export default function TraderProfilePage() {
                 <th className="px-4 py-3">Size</th>
                 <th className="px-4 py-3">Leverage</th>
                 <th className="px-4 py-3">Effect</th>
-                <th className="px-4 py-3">P&L</th>
               </tr>
             </thead>
             <tbody>
-              {trades.map((trade) => (
-                <tr key={trade.id} className="border-t border-trade-border">
-                  <td className="px-4 py-3 text-gray-500">{trade.timestamp}</td>
-                  <td className="px-4 py-3">
-                    <span className={trade.side === 'buy' ? 'text-trade-green' : 'text-trade-red'}>
-                      {trade.side.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">${trade.price.toFixed(2)}</td>
-                  <td className="px-4 py-3">{trade.size}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(trade.leverage)}`}>
-                      {trade.leverage}x
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">{trade.effect}</td>
-                  <td className={`px-4 py-3 ${trade.pnl > 0 ? 'text-trade-green' : trade.pnl < 0 ? 'text-trade-red' : 'text-gray-500'}`}>
-                    {trade.pnl !== 0 ? (trade.pnl > 0 ? '+' : '') + '$' + trade.pnl.toFixed(2) : '-'}
+              {trades.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    No trades yet
                   </td>
                 </tr>
-              ))}
+              ) : (
+                trades.map((trade) => {
+                  // Determine if this trader was buyer or seller
+                  const isBuyer = trade.buyer_id === trader.id
+                  const side = isBuyer ? 'buy' : 'sell'
+                  const leverage = isBuyer ? trade.buyer_leverage : trade.seller_leverage
+                  const effect = isBuyer ? trade.buyer_effect : trade.seller_effect
+
+                  const formatTime = (ts: string) => {
+                    try {
+                      const date = new Date(ts)
+                      return date.toLocaleString()
+                    } catch {
+                      return ts
+                    }
+                  }
+
+                  return (
+                    <tr key={trade.id} className="border-t border-trade-border">
+                      <td className="px-4 py-3 text-gray-500 text-sm">{formatTime(trade.timestamp)}</td>
+                      <td className="px-4 py-3">
+                        <span className={side === 'buy' ? 'text-trade-green' : 'text-trade-red'}>
+                          {side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">${trade.price.toFixed(2)}</td>
+                      <td className="px-4 py-3">{trade.size.toFixed(3)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(leverage)}`}>
+                          {leverage}x
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{effect}</td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -277,17 +280,13 @@ export default function TraderProfilePage() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-500">Max Leverage Used</span>
-                <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(trader.maxLeverageUsed)}`}>
-                  {trader.maxLeverageUsed}x
+                <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(trader.max_leverage_used)}`}>
+                  {trader.max_leverage_used}x
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Avg Leverage</span>
-                <span>25x</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Trades at 100x+</span>
-                <span>12</span>
+                <span className="text-gray-500">Total Trades</span>
+                <span>{trader.trade_count}</span>
               </div>
             </div>
           </div>
@@ -296,16 +295,20 @@ export default function TraderProfilePage() {
             <h3 className="text-lg font-medium mb-4">Performance</h3>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-500">Win Rate</span>
-                <span className="text-trade-green">68%</span>
+                <span className="text-gray-500">Balance</span>
+                <span>${trader.balance.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Profit Factor</span>
-                <span>2.4</span>
+                <span className="text-gray-500">Total P&L</span>
+                <span className={trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
+                  {trader.total_pnl >= 0 ? '+' : ''}${trader.total_pnl.toLocaleString()}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Liquidations</span>
-                <span className="text-trade-red">3</span>
+                <span className="text-gray-500">ROI</span>
+                <span className={trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
+                  {pnlPercent}%
+                </span>
               </div>
             </div>
           </div>

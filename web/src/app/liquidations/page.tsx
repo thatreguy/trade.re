@@ -2,38 +2,24 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-
-interface Liquidation {
-  id: string
-  traderId: string
-  username: string
-  traderType: string
-  side: 'long' | 'short'
-  size: number
-  entryPrice: number
-  liquidationPrice: number
-  markPrice: number
-  leverage: number
-  loss: number
-  insuranceFundHit: boolean
-  timestamp: string
-}
+import { useMarketStore } from '@/store/market'
 
 export default function LiquidationsPage() {
-  const [liquidations, setLiquidations] = useState<Liquidation[]>([])
-  const [sideFilter, setSideFilter] = useState<'all' | 'long' | 'short'>('all')
-  const [insuranceFund, setInsuranceFund] = useState(985000)
+  const { recentLiquidations, marketStats, fetchRecentLiquidations, fetchMarketStats } = useMarketStore()
+  const [sideFilter, setSideFilter] = useState<'all' | 'buy' | 'sell'>('all')
 
-  // Mock data
   useEffect(() => {
-    setLiquidations([
-      { id: '1', traderId: '9', username: 'rekt_andy', traderType: 'human', side: 'long', size: 50, entryPrice: 1010, liquidationPrice: 1003.37, markPrice: 1002.50, leverage: 150, loss: 375, insuranceFundHit: false, timestamp: '2 min ago' },
-      { id: '2', traderId: '10', username: 'liquidated_larry', traderType: 'human', side: 'short', size: 30, entryPrice: 990, liquidationPrice: 996.60, markPrice: 997.00, leverage: 150, loss: 210, insuranceFundHit: true, timestamp: '15 min ago' },
-      { id: '3', traderId: '8', username: 'newbie_trader', traderType: 'human', side: 'long', size: 10, entryPrice: 1005, liquidationPrice: 995.05, markPrice: 994.00, leverage: 100, loss: 110, insuranceFundHit: false, timestamp: '1 hour ago' },
-      { id: '4', traderId: '7', username: 'sniper_bot', traderType: 'bot', side: 'short', size: 25, entryPrice: 985, liquidationPrice: 1004.70, markPrice: 1005.00, leverage: 50, loss: 500, insuranceFundHit: false, timestamp: '2 hours ago' },
-      { id: '5', traderId: '6', username: 'risk_taker', traderType: 'human', side: 'long', size: 100, entryPrice: 1020, liquidationPrice: 1009.80, markPrice: 1008.00, leverage: 100, loss: 1200, insuranceFundHit: true, timestamp: '5 hours ago' },
-    ])
-  }, [])
+    fetchRecentLiquidations()
+    fetchMarketStats()
+    const interval = setInterval(() => {
+      fetchRecentLiquidations()
+      fetchMarketStats()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [fetchRecentLiquidations, fetchMarketStats])
+
+  const insuranceFund = marketStats?.insurance_fund || 1000000
+  const liquidations = recentLiquidations
 
   const getLeverageBadge = (leverage: number) => {
     const tier = leverage <= 10 ? 'conservative' : leverage <= 50 ? 'moderate' : leverage <= 100 ? 'aggressive' : 'degen'
@@ -55,10 +41,13 @@ export default function LiquidationsPage() {
   })
 
   const totalLiquidations = liquidations.length
-  const totalLongLiqs = liquidations.filter(l => l.side === 'long').length
-  const totalShortLiqs = liquidations.filter(l => l.side === 'short').length
+  // buy side = long position liquidated, sell side = short position liquidated
+  const totalLongLiqs = liquidations.filter(l => l.side === 'buy').length
+  const totalShortLiqs = liquidations.filter(l => l.side === 'sell').length
   const totalLoss = liquidations.reduce((sum, l) => sum + l.loss, 0)
-  const avgLeverageLiquidated = liquidations.reduce((sum, l) => sum + l.leverage, 0) / liquidations.length
+  const avgLeverageLiquidated = liquidations.length > 0
+    ? liquidations.reduce((sum, l) => sum + l.leverage, 0) / liquidations.length
+    : 0
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -136,14 +125,14 @@ export default function LiquidationsPage() {
           All
         </button>
         <button
-          className={`px-4 py-2 rounded ${sideFilter === 'long' ? 'bg-trade-green text-white' : 'bg-trade-card text-gray-400'}`}
-          onClick={() => setSideFilter('long')}
+          className={`px-4 py-2 rounded ${sideFilter === 'buy' ? 'bg-trade-green text-white' : 'bg-trade-card text-gray-400'}`}
+          onClick={() => setSideFilter('buy')}
         >
           Longs
         </button>
         <button
-          className={`px-4 py-2 rounded ${sideFilter === 'short' ? 'bg-trade-red text-white' : 'bg-trade-card text-gray-400'}`}
-          onClick={() => setSideFilter('short')}
+          className={`px-4 py-2 rounded ${sideFilter === 'sell' ? 'bg-trade-red text-white' : 'bg-trade-card text-gray-400'}`}
+          onClick={() => setSideFilter('sell')}
         >
           Shorts
         </button>
@@ -151,41 +140,58 @@ export default function LiquidationsPage() {
 
       {/* Liquidations Feed */}
       <div className="space-y-3">
-        {filteredLiquidations.map((liq) => (
-          <div key={liq.id} className="bg-trade-card rounded-lg border border-trade-border p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="text-2xl">💀</div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <Link href={`/trader/${liq.traderId}`} className="font-medium hover:text-blue-400">
-                      {liq.username}
-                    </Link>
-                    <span className={`px-2 py-0.5 rounded text-xs ${getTraderTypeBadge(liq.traderType)}`}>
-                      {liq.traderType}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(liq.leverage)}`}>
-                      {liq.leverage}x
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    <span className={liq.side === 'long' ? 'text-trade-green' : 'text-trade-red'}>
-                      {liq.side.toUpperCase()}
-                    </span>
-                    {' '}{liq.size} @ ${liq.entryPrice.toFixed(2)} → liquidated @ ${liq.markPrice.toFixed(2)}
+        {filteredLiquidations.map((liq) => {
+          const isLong = liq.side === 'buy'
+          const sideLabel = isLong ? 'LONG' : 'SHORT'
+          const formatTime = (ts: string) => {
+            try {
+              const date = new Date(ts)
+              const now = new Date()
+              const diffMs = now.getTime() - date.getTime()
+              const diffMins = Math.floor(diffMs / 60000)
+              if (diffMins < 1) return 'just now'
+              if (diffMins < 60) return `${diffMins} min ago`
+              const diffHours = Math.floor(diffMins / 60)
+              if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+              return date.toLocaleDateString()
+            } catch {
+              return ts
+            }
+          }
+
+          return (
+            <div key={liq.id} className="bg-trade-card rounded-lg border border-trade-border p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="text-2xl">💀</div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <Link href={`/trader/${liq.trader_id}`} className="font-medium hover:text-blue-400">
+                        Trader {liq.trader_id.slice(0, 8)}...
+                      </Link>
+                      <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(liq.leverage)}`}>
+                        {liq.leverage}x
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      <span className={isLong ? 'text-trade-green' : 'text-trade-red'}>
+                        {sideLabel}
+                      </span>
+                      {' '}{liq.size.toFixed(3)} @ ${liq.entry_price.toFixed(2)} → liquidated @ ${liq.mark_price.toFixed(2)}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-trade-red font-bold">-${liq.loss.toFixed(2)}</div>
-                <div className="text-xs text-gray-500">{liq.timestamp}</div>
-                {liq.insuranceFundHit && (
-                  <div className="text-xs text-purple-400">Insurance fund hit</div>
-                )}
+                <div className="text-right">
+                  <div className="text-trade-red font-bold">-${liq.loss.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500">{formatTime(liq.timestamp)}</div>
+                  {liq.insurance_fund_hit && (
+                    <div className="text-xs text-purple-400">Insurance fund hit</div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {filteredLiquidations.length === 0 && (
