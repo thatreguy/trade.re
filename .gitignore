@@ -4,6 +4,7 @@ bots/__pycache__/
 
 # Build artifacts
 *.exe
+*.exe~
 server
 
 # Next.js build output
