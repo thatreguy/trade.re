@@ -189,6 +189,10 @@ trade.re/
 │   ├── auth/                # Authentication
 │   ├── db/                  # Database layer
 │   └── ws/                  # WebSocket hub
+├── bots/                    # Trading bots
+│   ├── market_maker.py      # Liquidity provider bot
+│   ├── news_trader.py       # News sentiment trading bot
+│   └── requirements.txt     # Python dependencies
 ├── web/                     # Frontend (Next.js)
 ├── schema.sql               # Database schema
 ├── context.md               # This file
@@ -417,6 +421,45 @@ curl -X POST http://localhost:8080/api/v1/orders \
 # See ALL positions (transparency!)
 curl http://localhost:8080/api/v1/market/positions
 ```
+
+### Included Bots
+
+Trade.re comes with two example bots in the `bots/` directory:
+
+#### 1. Market Maker (`market_maker.py`)
+Provides liquidity by posting bid/ask orders around the current price.
+- Posts orders at multiple price levels (default: 3 levels)
+- Configurable spread (default: 0.5%)
+- Uses conservative leverage (default: 5x)
+- Registers as `market_maker` type
+
+```bash
+cd bots && pip install -r requirements.txt
+python market_maker.py
+```
+
+#### 2. News Sentiment Trader (`news_trader.py`)
+Curates world news and takes bullish/bearish positions based on sentiment.
+- Analyzes news headlines for sentiment keywords
+- Goes long on bullish sentiment, short on bearish
+- Uses moderate leverage (default: 25x)
+- Registers as `bot` type
+
+```bash
+cd bots && pip install -r requirements.txt
+python news_trader.py
+```
+
+**Note:** Set `NEWS_API_KEY` environment variable for real news from NewsAPI.org. Without it, uses mock news data for demo.
+
+#### Bot Transparency
+All bot positions are **PUBLIC** - everyone can see:
+- What positions bots hold
+- What leverage they're using
+- Their complete trade history
+- Their P&L performance
+
+This is Trade.re's core philosophy: no hidden information advantages.
 
 ## Design Decisions
 

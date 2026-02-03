@@ -21,6 +21,8 @@ type MatchingEngine struct {
 	books         map[string]*OrderBook
 	positions     map[string]*domain.Position // key: traderID:instrument
 	traders       map[uuid.UUID]*domain.Trader
+	recentTrades  []*domain.Trade       // Recent trades for history
+	liquidations  []*domain.Liquidation // Liquidation history
 	mu            sync.RWMutex
 	tradeHandlers []TradeHandler
 	orderHandlers []OrderHandler
@@ -29,9 +31,11 @@ type MatchingEngine struct {
 // NewMatchingEngine creates a new matching engine
 func NewMatchingEngine() *MatchingEngine {
 	return &MatchingEngine{
-		books:     make(map[string]*OrderBook),
-		positions: make(map[string]*domain.Position),
-		traders:   make(map[uuid.UUID]*domain.Trader),
+		books:        make(map[string]*OrderBook),
+		positions:    make(map[string]*domain.Position),
+		traders:      make(map[uuid.UUID]*domain.Trader),
+		recentTrades: make([]*domain.Trade, 0),
+		liquidations: make([]*domain.Liquidation, 0),
 	}
 }
 
@@ -229,6 +233,12 @@ func (me *MatchingEngine) createTrade(aggressor, resting *domain.Order, price, s
 		seller.TradeCount++
 	}
 
+	// Store trade in history (keep last 1000)
+	me.recentTrades = append([]*domain.Trade{trade}, me.recentTrades...)
+	if len(me.recentTrades) > 1000 {
+		me.recentTrades = me.recentTrades[:1000]
+	}
+
 	return trade
 }
 
@@ -417,4 +427,91 @@ func (me *MatchingEngine) GetAllTraders() []*domain.Trader {
 		traders = append(traders, t)
 	}
 	return traders
+}
+
+// GetRecentTrades returns recent trades for an instrument
+func (me *MatchingEngine) GetRecentTrades(instrument string, limit int) []*domain.Trade {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	var trades []*domain.Trade
+	for _, t := range me.recentTrades {
+		if t.Instrument == instrument {
+			trades = append(trades, t)
+			if len(trades) >= limit {
+				break
+			}
+		}
+	}
+	return trades
+}
+
+// GetRecentLiquidations returns recent liquidations for an instrument
+func (me *MatchingEngine) GetRecentLiquidations(instrument string, limit int) []*domain.Liquidation {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	var liqs []*domain.Liquidation
+	for _, l := range me.liquidations {
+		if l.Instrument == instrument {
+			liqs = append(liqs, l)
+			if len(liqs) >= limit {
+				break
+			}
+		}
+	}
+	return liqs
+}
+
+// GetMarketStats returns market statistics for an instrument
+func (me *MatchingEngine) GetMarketStats(instrument string) *domain.MarketStats {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	stats := &domain.MarketStats{
+		Instrument:    instrument,
+		Timestamp:     time.Now(),
+		InsuranceFund: decimal.NewFromInt(1000000), // Default
+	}
+
+	// Get last price from recent trades
+	for _, t := range me.recentTrades {
+		if t.Instrument == instrument {
+			stats.LastPrice = t.Price
+			stats.MarkPrice = t.Price
+			break
+		}
+	}
+
+	// If no trades yet, use 1000 as starting price
+	if stats.LastPrice.IsZero() {
+		stats.LastPrice = decimal.NewFromInt(1000)
+		stats.MarkPrice = decimal.NewFromInt(1000)
+	}
+
+	// Calculate 24h stats from trades
+	oneDayAgo := time.Now().Add(-24 * time.Hour)
+	stats.High24h = stats.LastPrice
+	stats.Low24h = stats.LastPrice
+
+	for _, t := range me.recentTrades {
+		if t.Instrument == instrument && t.Timestamp.After(oneDayAgo) {
+			if t.Price.GreaterThan(stats.High24h) {
+				stats.High24h = t.Price
+			}
+			if t.Price.LessThan(stats.Low24h) {
+				stats.Low24h = t.Price
+			}
+			stats.Volume24h = stats.Volume24h.Add(t.Size.Mul(t.Price))
+		}
+	}
+
+	// Calculate open interest
+	for _, pos := range me.positions {
+		if pos.Instrument == instrument && !pos.Size.IsZero() {
+			stats.OpenInterest = stats.OpenInterest.Add(pos.Size.Abs())
+		}
+	}
+
+	return stats
 }

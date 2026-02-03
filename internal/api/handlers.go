@@ -73,6 +73,22 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 			r.Get("/{symbol}/oi", s.handleGetOpenInterest)
 		})
 
+		// Market (convenience routes for R.index)
+		r.Route("/market", func(r chi.Router) {
+			r.Get("/orderbook", s.handleGetMarketOrderBook)
+			r.Get("/positions", s.handleGetMarketPositions)
+			r.Get("/oi", s.handleGetMarketOpenInterest)
+			r.Get("/trades", s.handleGetMarketTrades)
+			r.Get("/liquidations", s.handleGetMarketLiquidations)
+			r.Get("/stats", s.handleGetMarketStats)
+		})
+
+		// Auth (simplified for now)
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", s.handleRegister)
+			r.Post("/login", s.handleLogin)
+		})
+
 		// Orders
 		r.Route("/orders", func(r chi.Router) {
 			r.Post("/", s.handleSubmitOrder)
@@ -169,15 +185,11 @@ func (s *Server) handleGetTraderPositions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get positions for common instruments
-	instruments := []string{"BTC-PERP", "ETH-PERP"}
+	// Get R.index position
 	positions := make([]*domain.Position, 0)
-
-	for _, inst := range instruments {
-		pos := s.engine.GetPosition(traderID, inst)
-		if pos != nil && !pos.Size.IsZero() {
-			positions = append(positions, pos)
-		}
+	pos := s.engine.GetPosition(traderID, "R.index")
+	if pos != nil && !pos.Size.IsZero() {
+		positions = append(positions, pos)
 	}
 
 	respondJSON(w, http.StatusOK, positions)
@@ -299,4 +311,132 @@ func (s *Server) handleCancelOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+// Market convenience routes for R.index
+
+func (s *Server) handleGetMarketOrderBook(w http.ResponseWriter, r *http.Request) {
+	depthStr := r.URL.Query().Get("depth")
+	depth := 20
+	if depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 100 {
+			depth = d
+		}
+	}
+
+	book, err := s.engine.GetOrderBook("R.index", depth)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, book)
+}
+
+func (s *Server) handleGetMarketPositions(w http.ResponseWriter, r *http.Request) {
+	positions := s.engine.GetAllPositions("R.index")
+	respondJSON(w, http.StatusOK, positions)
+}
+
+func (s *Server) handleGetMarketOpenInterest(w http.ResponseWriter, r *http.Request) {
+	oi := s.engine.GetOpenInterestBreakdown("R.index")
+	respondJSON(w, http.StatusOK, oi)
+}
+
+func (s *Server) handleGetMarketTrades(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
+			limit = l
+		}
+	}
+
+	trades := s.engine.GetRecentTrades("R.index", limit)
+	respondJSON(w, http.StatusOK, trades)
+}
+
+func (s *Server) handleGetMarketLiquidations(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
+			limit = l
+		}
+	}
+
+	liquidations := s.engine.GetRecentLiquidations("R.index", limit)
+	respondJSON(w, http.StatusOK, liquidations)
+}
+
+func (s *Server) handleGetMarketStats(w http.ResponseWriter, r *http.Request) {
+	stats := s.engine.GetMarketStats("R.index")
+	respondJSON(w, http.StatusOK, stats)
+}
+
+// Auth handlers (simplified - no real auth for now)
+
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string            `json:"username"`
+		Password string            `json:"password"`
+		Type     domain.TraderType `json:"type"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "username and password required")
+		return
+	}
+
+	if req.Type == "" {
+		req.Type = domain.TraderTypeHuman
+	}
+
+	trader := &domain.Trader{
+		ID:        uuid.New(),
+		Username:  req.Username,
+		Type:      req.Type,
+		Balance:   decimal.NewFromInt(10000), // Starting balance
+		CreatedAt: time.Now(),
+		TotalPnL:  decimal.Zero,
+	}
+
+	s.engine.RegisterTrader(trader)
+
+	// Return trader with a simple token (trader ID as token for simplicity)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"trader": trader,
+		"token":  trader.ID.String(),
+	})
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Find trader by username
+	traders := s.engine.GetAllTraders()
+	for _, trader := range traders {
+		if trader.Username == req.Username {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"trader": trader,
+				"token":  trader.ID.String(),
+			})
+			return
+		}
+	}
+
+	respondError(w, http.StatusUnauthorized, "invalid credentials")
 }

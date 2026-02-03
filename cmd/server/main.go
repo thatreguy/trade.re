@@ -18,9 +18,8 @@ func main() {
 	// Initialize matching engine
 	eng := engine.NewMatchingEngine()
 
-	// Register default instruments
-	eng.RegisterInstrument("BTC-PERP")
-	eng.RegisterInstrument("ETH-PERP")
+	// Register R.index - the only tradeable instrument
+	eng.RegisterInstrument("R.index")
 
 	// Initialize WebSocket hub
 	hub := ws.NewHub()
@@ -69,19 +68,21 @@ func main() {
 	log.Printf("=================================")
 	log.Printf("  Trade.re Server Starting")
 	log.Printf("  Port: %s", port)
-	log.Printf("  Instruments: BTC-PERP, ETH-PERP")
+	log.Printf("  Instrument: R.index")
 	log.Printf("=================================")
 	log.Printf("")
 	log.Printf("Endpoints:")
 	log.Printf("  GET  /health")
 	log.Printf("  GET  /ws (WebSocket)")
+	log.Printf("  GET  /api/v1/auth/register")
+	log.Printf("  GET  /api/v1/auth/login")
 	log.Printf("  GET  /api/v1/traders")
-	log.Printf("  POST /api/v1/traders")
 	log.Printf("  GET  /api/v1/traders/{id}")
 	log.Printf("  GET  /api/v1/traders/{id}/positions")
-	log.Printf("  GET  /api/v1/instruments/{symbol}/orderbook")
-	log.Printf("  GET  /api/v1/instruments/{symbol}/positions")
-	log.Printf("  GET  /api/v1/instruments/{symbol}/oi")
+	log.Printf("  GET  /api/v1/market/orderbook")
+	log.Printf("  GET  /api/v1/market/positions")
+	log.Printf("  GET  /api/v1/market/trades")
+	log.Printf("  GET  /api/v1/market/stats")
 	log.Printf("  POST /api/v1/orders")
 	log.Printf("  DELETE /api/v1/orders/{id}")
 	log.Printf("")
