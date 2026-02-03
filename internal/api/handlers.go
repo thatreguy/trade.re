@@ -64,6 +64,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 			r.Post("/", s.handleCreateTrader)
 			r.Get("/{traderID}", s.handleGetTrader)
 			r.Get("/{traderID}/positions", s.handleGetTraderPositions)
+			r.Get("/{traderID}/trades", s.handleGetTraderTrades)
 		})
 
 		// Instruments
@@ -193,6 +194,27 @@ func (s *Server) handleGetTraderPositions(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, positions)
+}
+
+// handleGetTraderTrades returns a trader's trade history (public - transparency!)
+func (s *Server) handleGetTraderTrades(w http.ResponseWriter, r *http.Request) {
+	traderIDStr := chi.URLParam(r, "traderID")
+	traderID, err := uuid.Parse(traderIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid trader ID")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
+			limit = l
+		}
+	}
+
+	trades := s.engine.GetTraderTrades(traderID, "R.index", limit)
+	respondJSON(w, http.StatusOK, trades)
 }
 
 // handleGetOrderBook returns the order book (public)

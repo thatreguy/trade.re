@@ -2,11 +2,13 @@ package engine
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/thatreguy/trade.re/internal/db"
 	"github.com/thatreguy/trade.re/internal/domain"
 )
 
@@ -26,6 +28,7 @@ type MatchingEngine struct {
 	mu            sync.RWMutex
 	tradeHandlers []TradeHandler
 	orderHandlers []OrderHandler
+	db            *db.SQLiteDB // Optional database for persistence
 }
 
 // NewMatchingEngine creates a new matching engine
@@ -37,6 +40,72 @@ func NewMatchingEngine() *MatchingEngine {
 		recentTrades: make([]*domain.Trade, 0),
 		liquidations: make([]*domain.Liquidation, 0),
 	}
+}
+
+// SetDatabase sets the SQLite database for persistence
+func (me *MatchingEngine) SetDatabase(database *db.SQLiteDB) {
+	me.db = database
+}
+
+// LoadFromDatabase loads all data from the database
+func (me *MatchingEngine) LoadFromDatabase() error {
+	if me.db == nil {
+		return nil
+	}
+
+	me.mu.Lock()
+	defer me.mu.Unlock()
+
+	// Load traders
+	traders, err := me.db.GetAllTraders()
+	if err != nil {
+		return fmt.Errorf("loading traders: %w", err)
+	}
+	for _, t := range traders {
+		me.traders[t.ID] = t
+	}
+	log.Printf("Loaded %d traders from database", len(traders))
+
+	// Load positions for R.index
+	positions, err := me.db.GetAllPositions("R.index")
+	if err != nil {
+		return fmt.Errorf("loading positions: %w", err)
+	}
+	for _, p := range positions {
+		posKey := fmt.Sprintf("%s:%s", p.TraderID, p.Instrument)
+		me.positions[posKey] = p
+	}
+	log.Printf("Loaded %d positions from database", len(positions))
+
+	// Load recent trades
+	trades, err := me.db.GetRecentTrades("R.index", 1000)
+	if err != nil {
+		return fmt.Errorf("loading trades: %w", err)
+	}
+	me.recentTrades = trades
+	log.Printf("Loaded %d trades from database", len(trades))
+
+	// Load recent liquidations
+	liquidations, err := me.db.GetRecentLiquidations("R.index", 100)
+	if err != nil {
+		return fmt.Errorf("loading liquidations: %w", err)
+	}
+	me.liquidations = liquidations
+	log.Printf("Loaded %d liquidations from database", len(liquidations))
+
+	// Load open orders and rebuild order book
+	orders, err := me.db.GetOpenOrders("R.index")
+	if err != nil {
+		return fmt.Errorf("loading orders: %w", err)
+	}
+	if book, exists := me.books["R.index"]; exists {
+		for _, order := range orders {
+			book.AddOrder(order)
+		}
+		log.Printf("Loaded %d open orders from database", len(orders))
+	}
+
+	return nil
 }
 
 // RegisterInstrument creates an order book for an instrument
@@ -53,6 +122,13 @@ func (me *MatchingEngine) RegisterTrader(trader *domain.Trader) {
 	me.mu.Lock()
 	defer me.mu.Unlock()
 	me.traders[trader.ID] = trader
+
+	// Persist to database
+	if me.db != nil {
+		if err := me.db.SaveTrader(trader); err != nil {
+			log.Printf("Error saving trader to database: %v", err)
+		}
+	}
 }
 
 // OnTrade registers a trade handler
@@ -93,6 +169,12 @@ func (me *MatchingEngine) SubmitOrder(order *domain.Order) ([]*domain.Trade, err
 		order.Status = domain.OrderStatusPartial
 		if order.FilledSize.IsZero() {
 			order.Status = domain.OrderStatusPending
+		}
+		// Persist resting order
+		if me.db != nil {
+			if err := me.db.SaveOrder(order); err != nil {
+				log.Printf("Error saving order to database: %v", err)
+			}
 		}
 	} else if order.RemainingSize().IsZero() {
 		order.Status = domain.OrderStatusFilled
@@ -162,10 +244,22 @@ func (me *MatchingEngine) matchOrder(book *OrderBook, order *domain.Order) []*do
 			if restingOrder.RemainingSize().IsZero() {
 				restingOrder.Status = domain.OrderStatusFilled
 				book.RemoveOrder(restingOrder.ID)
+				// Remove filled order from database
+				if me.db != nil {
+					if err := me.db.DeleteOrder(restingOrder.ID); err != nil {
+						log.Printf("Error deleting filled order from database: %v", err)
+					}
+				}
 			} else {
 				restingOrder.Status = domain.OrderStatusPartial
 				// Update level size
 				level.totalSize = level.totalSize.Sub(fillSize)
+				// Update partial fill in database
+				if me.db != nil {
+					if err := me.db.SaveOrder(restingOrder); err != nil {
+						log.Printf("Error updating order in database: %v", err)
+					}
+				}
 			}
 
 			// Notify about resting order update
@@ -237,6 +331,24 @@ func (me *MatchingEngine) createTrade(aggressor, resting *domain.Order, price, s
 	me.recentTrades = append([]*domain.Trade{trade}, me.recentTrades...)
 	if len(me.recentTrades) > 1000 {
 		me.recentTrades = me.recentTrades[:1000]
+	}
+
+	// Persist to database
+	if me.db != nil {
+		if err := me.db.SaveTrade(trade); err != nil {
+			log.Printf("Error saving trade to database: %v", err)
+		}
+		// Save updated trader stats
+		if buyer, ok := me.traders[buyerOrder.TraderID]; ok {
+			if err := me.db.SaveTrader(buyer); err != nil {
+				log.Printf("Error saving buyer to database: %v", err)
+			}
+		}
+		if seller, ok := me.traders[sellerOrder.TraderID]; ok {
+			if err := me.db.SaveTrader(seller); err != nil {
+				log.Printf("Error saving seller to database: %v", err)
+			}
+		}
 	}
 
 	return trade
@@ -313,6 +425,20 @@ func (me *MatchingEngine) updatePosition(traderID uuid.UUID, instrument string, 
 	pos.Size = newSize
 	pos.UpdatedAt = time.Now()
 
+	// Persist position to database
+	if me.db != nil {
+		if newSize.IsZero() {
+			// Position closed, delete from database
+			if err := me.db.DeletePosition(traderID, instrument); err != nil {
+				log.Printf("Error deleting position from database: %v", err)
+			}
+		} else {
+			if err := me.db.SavePosition(pos); err != nil {
+				log.Printf("Error saving position to database: %v", err)
+			}
+		}
+	}
+
 	return newSize
 }
 
@@ -377,6 +503,13 @@ func (me *MatchingEngine) CancelOrder(orderID uuid.UUID, instrument string) erro
 	order.Status = domain.OrderStatusCancelled
 	order.UpdatedAt = time.Now()
 
+	// Remove from database
+	if me.db != nil {
+		if err := me.db.DeleteOrder(orderID); err != nil {
+			log.Printf("Error deleting order from database: %v", err)
+		}
+	}
+
 	for _, handler := range me.orderHandlers {
 		handler(order)
 	}
@@ -437,6 +570,23 @@ func (me *MatchingEngine) GetRecentTrades(instrument string, limit int) []*domai
 	var trades []*domain.Trade
 	for _, t := range me.recentTrades {
 		if t.Instrument == instrument {
+			trades = append(trades, t)
+			if len(trades) >= limit {
+				break
+			}
+		}
+	}
+	return trades
+}
+
+// GetTraderTrades returns trades where the trader was buyer or seller
+func (me *MatchingEngine) GetTraderTrades(traderID uuid.UUID, instrument string, limit int) []*domain.Trade {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	var trades []*domain.Trade
+	for _, t := range me.recentTrades {
+		if t.Instrument == instrument && (t.BuyerID == traderID || t.SellerID == traderID) {
 			trades = append(trades, t)
 			if len(trades) >= limit {
 				break

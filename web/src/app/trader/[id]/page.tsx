@@ -43,10 +43,10 @@ export default function TraderProfilePage() {
   // Parse trader values from API strings to numbers
   const parsedTrader = trader ? {
     ...trader,
-    balance: parseFloat(parsedTrader.balance) || 0,
-    total_pnl: parseFloat(parsedTrader.total_pnl) || 0,
-    trade_count: parsedTrader.trade_count || 0,
-    max_leverage_used: parsedTrader.max_leverage_used || 0
+    balance: parseFloat(trader.balance) || 0,
+    total_pnl: parseFloat(trader.total_pnl) || 0,
+    trade_count: trader.trade_count || 0,
+    max_leverage_used: trader.max_leverage_used || 0
   } : null
 
   // Parse position values from API strings to numbers
@@ -95,6 +95,30 @@ export default function TraderProfilePage() {
       case 'bot': return 'bg-orange-600'
       case 'market_maker': return 'bg-purple-600'
       default: return 'bg-gray-600'
+    }
+  }
+
+  // Get effect badge styling
+  const getEffectBadge = (effect: string) => {
+    switch (effect) {
+      case 'open': return { color: 'text-trade-green', label: 'OPEN' }
+      case 'close': return { color: 'text-yellow-500', label: 'CLOSE' }
+      case 'liquidation': return { color: 'text-trade-red', label: 'LIQUIDATED' }
+      default: return { color: 'text-gray-500', label: effect }
+    }
+  }
+
+  // Get OI impact based on both sides
+  const getOIImpact = (buyerEffect: string, sellerEffect: string) => {
+    const buyerOpening = buyerEffect === 'open'
+    const sellerOpening = sellerEffect === 'open'
+
+    if (buyerOpening && sellerOpening) {
+      return { label: 'OI+', color: 'text-trade-green', desc: 'Added to OI' }
+    } else if (!buyerOpening && !sellerOpening) {
+      return { label: 'OI-', color: 'text-trade-red', desc: 'Reduced OI' }
+    } else {
+      return { label: 'OI=', color: 'text-gray-500', desc: 'No OI change' }
     }
   }
 
@@ -247,12 +271,13 @@ export default function TraderProfilePage() {
                 <th className="px-4 py-3">Size</th>
                 <th className="px-4 py-3">Leverage</th>
                 <th className="px-4 py-3">Effect</th>
+                <th className="px-4 py-3">OI Impact</th>
               </tr>
             </thead>
             <tbody>
               {parsedTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                     No trades yet
                   </td>
                 </tr>
@@ -263,6 +288,8 @@ export default function TraderProfilePage() {
                   const side = isBuyer ? 'buy' : 'sell'
                   const leverage = isBuyer ? trade.buyer_leverage : trade.seller_leverage
                   const effect = isBuyer ? trade.buyer_effect : trade.seller_effect
+                  const effectBadge = getEffectBadge(effect)
+                  const oiImpact = getOIImpact(trade.buyer_effect, trade.seller_effect)
 
                   const formatTime = (ts: string) => {
                     try {
@@ -288,7 +315,14 @@ export default function TraderProfilePage() {
                           {leverage}x
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{effect}</td>
+                      <td className="px-4 py-3">
+                        <span className={effectBadge.color}>{effectBadge.label}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`font-medium ${oiImpact.color}`} title={oiImpact.desc}>
+                          {oiImpact.label}
+                        </span>
+                      </td>
                     </tr>
                   )
                 })

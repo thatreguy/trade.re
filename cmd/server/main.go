@@ -4,22 +4,52 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/thatreguy/trade.re/internal/api"
+	"github.com/thatreguy/trade.re/internal/db"
 	"github.com/thatreguy/trade.re/internal/domain"
 	"github.com/thatreguy/trade.re/internal/engine"
 	"github.com/thatreguy/trade.re/internal/ws"
 )
 
 func main() {
+	// Get database path from env or default to ./data/tradere.db
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		dbPath = "./data/tradere.db"
+	}
+
+	// Ensure data directory exists
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
+	// Initialize SQLite database
+	log.Printf("Opening database: %s", dbPath)
+	database, err := db.NewSQLite(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer database.Close()
+
 	// Initialize matching engine
 	eng := engine.NewMatchingEngine()
 
+	// Connect database to engine
+	eng.SetDatabase(database)
+
 	// Register R.index - the only tradeable instrument
 	eng.RegisterInstrument("R.index")
+
+	// Load existing data from database
+	if err := eng.LoadFromDatabase(); err != nil {
+		log.Fatalf("Failed to load data from database: %v", err)
+	}
 
 	// Initialize WebSocket hub
 	hub := ws.NewHub()
@@ -68,6 +98,7 @@ func main() {
 	log.Printf("=================================")
 	log.Printf("  Trade.re Server Starting")
 	log.Printf("  Port: %s", port)
+	log.Printf("  Database: %s", dbPath)
 	log.Printf("  Instrument: R.index")
 	log.Printf("=================================")
 	log.Printf("")

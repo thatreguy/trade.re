@@ -164,15 +164,21 @@ Every trader's leverage is **publicly visible**:
 - **WebSocket**: gorilla/websocket
 - **Decimals**: shopspring/decimal
 - **Config**: YAML
-- **Auth**: JWT + API keys
+- **Auth**: Simplified (trader ID as token)
 
-### Database (PostgreSQL)
+### Database
+**Current**: SQLite with WAL mode (`./data/tradere.db`)
+- Data persists across server restarts
+- Pure Go driver (no CGO required)
+- Auto-creates data directory and schema on startup
+
+Tables (when SQLite is implemented):
 - `traders` - User accounts and stats
 - `positions` - Current open positions
 - `orders` - Active and historical orders
 - `trades` - Complete trade history
 - `liquidations` - Liquidation events
-- `insurance_fund` - Fund balance
+- `market_stats` - Daily statistics
 
 ### Project Structure
 ```
@@ -304,6 +310,14 @@ GET /ws                                    # Real-time feed
 4. **Liquidations** (`/liquidations`) - Real-time liquidation feed
 5. **Trader Profile** (`/trader/{id}`) - Public history and stats
 
+### OI Impact Indicators
+Every trade shows its impact on Open Interest:
+- **OI+** (green) - Both parties opened new positions → OI increased
+- **OI-** (red) - Both parties closed positions → OI decreased
+- **OI=** (gray) - One opened, one closed → Position transfer, no net OI change
+
+This is visible in Recent Trades and Trader Profile trade history.
+
 ### State Management (Zustand)
 Two stores in `web/src/store/`:
 
@@ -343,15 +357,13 @@ Two stores in `web/src/store/`:
 ## Roadmap
 
 ### Phase 1: Core ✅ DONE
-- [x] Matching engine
+- [x] Matching engine (in-memory)
 - [x] Order book with FIFO
 - [x] REST API
 - [x] WebSocket feeds
 - [x] Domain types with leverage
-- [x] PostgreSQL schema
 - [x] Config system
-- [x] Auth (JWT + API keys)
-- [x] Liquidation engine
+- [x] Auth (simplified - trader ID as token)
 - [x] Basic frontend (trading, positions)
 - [x] Leaderboard page
 - [x] Liquidations page
@@ -364,12 +376,14 @@ Two stores in `web/src/store/`:
 - [x] Market maker bot
 - [x] News sentiment trading bot
 - [x] TradingView chart integration (1-minute candles from trades)
-- [ ] Candle data API (daily @ 00:00 UTC)
+- [x] OI impact indicators (OI+/OI-/OI= on trades)
+- [x] Trader trade history endpoint
 
-### Phase 3: Polish
+### Phase 3: Persistence & Polish
+- [x] **SQLite persistence** (data survives restarts)
+- [ ] Candle data API (daily @ 00:00 UTC)
+- [ ] Liquidation engine
 - [ ] Historical data API
-- [ ] Trade history search
-- [ ] Position history
 - [ ] Mobile responsive
 
 ### Phase 4: Social
@@ -381,7 +395,6 @@ Two stores in `web/src/store/`:
 
 ### Prerequisites
 - Go 1.21+
-- PostgreSQL 15+
 - Node.js 18+
 
 ### Quick Start
@@ -390,11 +403,7 @@ Two stores in `web/src/store/`:
 git clone https://github.com/thatreguy/trade.re.git
 cd trade.re
 
-# Database
-createdb tradere
-psql tradere < schema.sql
-
-# Backend
+# Backend (SQLite database auto-created in ./data/)
 go run ./cmd/server
 
 # Frontend
@@ -481,6 +490,6 @@ This applies to: `price`, `size`, `balance`, `total_pnl`, `margin`, `unrealized_
 2. **Single Instrument (R.index)**: One index representing global sentiment - maximum liquidity, clear meaning.
 3. **Public Leverage**: Core differentiator - see who's taking risk on their worldview.
 4. **REST for Bots**: No SDK complexity - standard HTTP works everywhere.
-5. **PostgreSQL**: Battle-tested, ACID compliant, great for financial data.
+5. **SQLite**: Zero-config, embedded database. Pure Go driver, no CGO needed. WAL mode for concurrent access.
 6. **24/7 Market**: Always open, no weekends. Daily candles align to 00:00 UTC.
 7. **UTC for Everything**: All timestamps in UTC. Daily stats reset at midnight UTC (5:30 AM IST).
