@@ -440,9 +440,10 @@ Trade.re comes with two example bots in the `bots/` directory:
 
 #### 1. Market Maker (`market_maker.py`)
 Provides liquidity by posting bid/ask orders around the current price.
-- Posts orders at multiple price levels (default: 3 levels)
-- Configurable spread (default: 0.5%)
-- Uses conservative leverage (default: 5x)
+- Posts orders at 5 price levels on each side
+- Tight spread (0.3%) for more fills
+- Updates every 3 seconds
+- Uses conservative leverage (5x)
 - Registers as `market_maker` type
 
 ```bash
@@ -454,15 +455,26 @@ python market_maker.py
 Curates world news and takes bullish/bearish positions based on sentiment.
 - Analyzes news headlines for sentiment keywords
 - Goes long on bullish sentiment, short on bearish
-- Uses moderate leverage (default: 25x)
+- Checks every 10 seconds, low threshold for activity
+- Uses moderate leverage (25x)
 - Registers as `bot` type
 
 ```bash
-cd bots && pip install -r requirements.txt
 python news_trader.py
 ```
 
 **Note:** Set `NEWS_API_KEY` environment variable for real news from NewsAPI.org. Without it, uses mock news data for demo.
+
+#### 3. Random Trader (`random_trader.py`)
+Generates consistent trading activity with random market orders.
+- Randomly buys or sells to create price movement
+- Trades every ~5 seconds
+- Uses moderate leverage (10x)
+- Helps maintain active orderbook
+
+```bash
+python random_trader.py
+```
 
 #### Bot Transparency
 All bot positions are **PUBLIC** - everyone can see:

@@ -241,12 +241,12 @@ def main():
     trader = NewsTrader(
         trader_id=trader_id,
         token=token,
-        position_size=2.0,       # 2 units per trade
+        position_size=3.0,       # 3 units per trade (matches MM order size)
         leverage=25,             # Moderate 25x leverage
-        sentiment_threshold=0.3  # Need 30% sentiment bias to trade
+        sentiment_threshold=0.1  # Lower threshold for more activity
     )
 
-    trader.run(interval=30)  # Check news every 30 seconds
+    trader.run(interval=10)  # Check news every 10 seconds for more activity
 
 
 if __name__ == "__main__":
