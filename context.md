@@ -8,9 +8,10 @@ Trade.re is a **fully transparent trading simulation game** where all market dat
 
 ### Radical Transparency
 - Every trade is public: buyer, seller, price, size, timestamp
-- Every position is visible: who holds what, at what entry price
+- Every position is visible: who holds what, at what entry price, **at what leverage**
 - Every liquidation is tracked: no hidden forced closures
 - Every market maker's inventory is exposed
+- **Leverage is public**: See who's trading 1x vs 150x
 - No dark pools, no hidden orders, no information advantage
 
 ### Open Interest Redefined
@@ -19,281 +20,438 @@ Traditional OI just shows aggregate numbers. Trade.re breaks it down:
 - **OI Decrease**: Long closed + Short closed (who exited against whom)
 - **Liquidations**: Forced closures with full attribution (who got liquidated, who took the other side)
 
+## The R.index
+
+Trade.re features a single tradeable instrument: **R.index** - a virtual perpetual index.
+
+### Why a Single Virtual Index?
+- **Simplicity**: One market, maximum liquidity concentration
+- **Fairness**: No information edge from external price feeds
+- **Pure Gameplay**: Price is determined entirely by participant actions
+- **Configurability**: Starting price set via config file
+
+### R.index Specifications
+| Parameter | Value |
+|-----------|-------|
+| Symbol | `R.index` |
+| Type | Perpetual |
+| Starting Price | Configurable (default: 1000) |
+| Tick Size | 0.01 |
+| Min Order Size | 0.001 |
+| Max Leverage | 150x (Binance-style) |
+| Funding Interval | 8 hours |
+
+## Leverage System
+
+### Public Leverage (Core Transparency Feature!)
+Every trader's leverage is **publicly visible**:
+- When you open a position, your leverage choice is broadcast
+- Position explorer shows: trader, size, entry, **leverage**, liquidation price
+- Leaderboards can filter by leverage tier (1-10x, 10-50x, 50-150x)
+
+### Leverage Tiers
+| Tier | Range | Maintenance Margin |
+|------|-------|-------------------|
+| Conservative | 1-10x | 0.5% |
+| Moderate | 11-50x | 1% |
+| Aggressive | 51-100x | 2% |
+| Degen | 101-150x | 5% |
+
+### Liquidation Rules
+- **Liquidation Price** = Entry Price ± (Entry Price / Leverage) * (1 - Maintenance Margin)
+- Liquidations are executed against the insurance fund first
+- If insurance fund insufficient, ADL (Auto-Deleveraging) kicks in
+- All liquidations are broadcast in real-time with full details
+
 ## Participant Types
 
 ### 1. Market Makers
 - Provide liquidity by quoting bid/ask spreads
-- Inventory and P&L fully visible
+- Inventory, P&L, and **leverage** fully visible
 - Can be human or algorithmic
 - Earn spread, take inventory risk
 
 ### 2. Real Traders (Humans)
 - Manual trading via web interface
-- All positions and history public
+- All positions, history, and **leverage choices** public
 - Compete on strategy, not information
 
 ### 3. Bot Traders
 - Algorithmic traders with open-source or disclosed strategies
 - Must register and be identifiable
-- Performance metrics public
+- Performance metrics and **leverage usage** public
 - Creates a competitive algo arena
 
 ## Data Model
 
-### Trade Record
-```
+### Trader Record
+```json
 {
-  trade_id: uuid,
-  timestamp: datetime,
-  instrument: string,
-  price: decimal,
-  size: decimal,
-  buyer_id: uuid,
-  seller_id: uuid,
-  buyer_position_effect: "open" | "close" | "liquidation",
-  seller_position_effect: "open" | "close" | "liquidation",
-  buyer_new_position: decimal,
-  seller_new_position: decimal
+  "id": "uuid",
+  "username": "string",
+  "type": "human | bot | market_maker",
+  "api_key_hash": "string",
+  "created_at": "datetime",
+  "total_pnl": "decimal",
+  "trade_count": "int",
+  "max_leverage_used": "int",
+  "current_leverage": "int"
 }
 ```
 
-### Position Record
-```
+### Position Record (Public!)
+```json
 {
-  trader_id: uuid,
-  instrument: string,
-  size: decimal,  // positive = long, negative = short
-  entry_price: decimal,
-  unrealized_pnl: decimal,
-  realized_pnl: decimal,
-  liquidation_price: decimal,
-  margin_used: decimal
+  "trader_id": "uuid",
+  "instrument": "R.index",
+  "size": "decimal",
+  "entry_price": "decimal",
+  "leverage": "int",
+  "margin": "decimal",
+  "unrealized_pnl": "decimal",
+  "realized_pnl": "decimal",
+  "liquidation_price": "decimal",
+  "updated_at": "datetime"
+}
+```
+
+### Trade Record
+```json
+{
+  "id": "uuid",
+  "timestamp": "datetime",
+  "instrument": "R.index",
+  "price": "decimal",
+  "size": "decimal",
+  "buyer_id": "uuid",
+  "seller_id": "uuid",
+  "buyer_leverage": "int",
+  "seller_leverage": "int",
+  "buyer_effect": "open | close | liquidation",
+  "seller_effect": "open | close | liquidation",
+  "buyer_new_position": "decimal",
+  "seller_new_position": "decimal"
 }
 ```
 
 ### Open Interest Breakdown
-```
+```json
 {
-  instrument: string,
-  timestamp: datetime,
-  total_oi: decimal,
-  long_positions: count,
-  short_positions: count,
-  new_longs_opened: count,
-  new_shorts_opened: count,
-  longs_closed: count,
-  shorts_closed: count,
-  longs_liquidated: count,
-  shorts_liquidated: count
+  "instrument": "R.index",
+  "timestamp": "datetime",
+  "total_oi": "decimal",
+  "long_positions": "int",
+  "short_positions": "int",
+  "avg_long_leverage": "decimal",
+  "avg_short_leverage": "decimal",
+  "new_longs_opened": "int",
+  "new_shorts_opened": "int",
+  "longs_closed": "int",
+  "shorts_closed": "int",
+  "longs_liquidated": "int",
+  "shorts_liquidated": "int"
 }
 ```
 
 ## Technical Architecture
 
-### Backend (Implemented)
+### Backend
 - **Language**: Go 1.21+
-  - Chosen for: excellent concurrency (goroutines), strong typing, single binary deployment
-  - High performance for matching engine operations
-- **Router**: chi/v5 (lightweight, idiomatic Go)
-- **WebSocket**: gorilla/websocket for real-time feeds
-- **Decimals**: shopspring/decimal for precise financial calculations
-- **Database**: TimescaleDB (planned for persistence)
+  - Excellent concurrency (goroutines)
+  - Strong typing, single binary deployment
+  - High performance for matching engine
+- **Router**: chi/v5
+- **WebSocket**: gorilla/websocket
+- **Decimals**: shopspring/decimal
+- **Config**: YAML config file
+- **Auth**: JWT tokens with API keys
+
+### Database: PostgreSQL
+**Why PostgreSQL?**
+- Battle-tested for financial applications
+- ACID compliance for trade integrity
+- JSON support for flexible data
+- Excellent Go drivers (pgx)
+- Can add TimescaleDB extension later for time-series optimization
+- Rich ecosystem (backups, replication, monitoring)
+
+**Schema Design**:
+- `traders` - User accounts and stats
+- `positions` - Current open positions
+- `orders` - Active and historical orders
+- `trades` - Complete trade history
+- `liquidations` - Liquidation events
+- `funding_payments` - Funding rate history
 
 ### Project Structure
 ```
 trade.re/
-├── cmd/server/          # Main entry point
+├── cmd/server/              # Main entry point
+├── config/
+│   └── config.yaml          # Server configuration
 ├── internal/
-│   ├── domain/          # Core types (Trade, Order, Position, etc.)
-│   ├── engine/          # Matching engine & order book
-│   ├── api/             # REST API handlers
-│   └── ws/              # WebSocket hub & broadcasting
-├── context.md           # This file
+│   ├── config/              # Config loading
+│   ├── domain/              # Core types
+│   ├── engine/              # Matching engine & order book
+│   ├── liquidation/         # Liquidation engine
+│   ├── api/                 # REST API handlers
+│   ├── auth/                # Authentication
+│   ├── db/                  # Database layer
+│   └── ws/                  # WebSocket hub
+├── sdk/
+│   ├── go/                  # Go SDK
+│   ├── python/              # Python SDK
+│   └── typescript/          # TypeScript SDK
+├── web/                     # Frontend (React/Next.js)
+├── context.md
 └── README.md
 ```
 
-### Matching Engine (Implemented)
-- **Order Book**: Price-level based with FIFO queuing at each level
-- **Matching**: Price-time priority
-- **Order Types**: Limit, Market
-- **Self-trade Prevention**: Orders won't match against same trader
-- **Position Tracking**: Automatic position effect detection (open/close)
-- **P&L Calculation**: Real-time realized/unrealized P&L
+### Configuration File (config.yaml)
+```yaml
+server:
+  port: 8080
+  host: "0.0.0.0"
 
-### API Endpoints (Implemented)
+database:
+  host: localhost
+  port: 5432
+  name: tradere
+  user: tradere
+  password: ${DB_PASSWORD}
+
+rindex:
+  starting_price: 1000
+  tick_size: 0.01
+  min_order_size: 0.001
+  max_leverage: 150
+  funding_interval_hours: 8
+
+auth:
+  jwt_secret: ${JWT_SECRET}
+  token_expiry_hours: 24
+
+liquidation:
+  check_interval_ms: 100
+  insurance_fund_initial: 1000000
 ```
-GET  /health                              # Health check
-GET  /ws                                  # WebSocket connection
-GET  /api/v1/traders                      # List all traders (public)
-POST /api/v1/traders                      # Register new trader
-GET  /api/v1/traders/{id}                 # Get trader details
-GET  /api/v1/traders/{id}/positions       # Get trader positions (public!)
-GET  /api/v1/instruments/{symbol}/orderbook  # Order book snapshot
-GET  /api/v1/instruments/{symbol}/positions  # ALL positions (transparency!)
-GET  /api/v1/instruments/{symbol}/oi         # Open interest breakdown
-POST /api/v1/orders                       # Submit order
-DELETE /api/v1/orders/{id}                # Cancel order
+
+### API Endpoints
+```
+# Health & Info
+GET  /health
+GET  /api/v1/config                        # Public config (starting price, etc.)
+
+# Auth
+POST /api/v1/auth/register                 # Register new trader
+POST /api/v1/auth/login                    # Get JWT token
+POST /api/v1/auth/api-key                  # Generate API key (for bots)
+
+# Traders (Public - Transparency!)
+GET  /api/v1/traders                       # List all traders
+GET  /api/v1/traders/{id}                  # Trader details + leverage stats
+GET  /api/v1/traders/{id}/positions        # Trader positions with leverage
+GET  /api/v1/traders/{id}/trades           # Trade history
+
+# R.index Market
+GET  /api/v1/market/orderbook              # Order book
+GET  /api/v1/market/positions              # ALL positions (transparency!)
+GET  /api/v1/market/oi                     # Open interest breakdown
+GET  /api/v1/market/trades                 # Recent trades
+GET  /api/v1/market/liquidations           # Recent liquidations
+GET  /api/v1/market/funding                # Current funding rate
+
+# Trading (Authenticated)
+POST   /api/v1/orders                      # Submit order (includes leverage)
+DELETE /api/v1/orders/{id}                 # Cancel order
+PUT    /api/v1/positions/leverage          # Adjust position leverage
+POST   /api/v1/positions/close             # Close position
+
+# WebSocket
+GET /ws                                    # Real-time feed
 ```
 
 ### WebSocket Events
 ```json
-{"type": "trade", "data": {...}}      // Every trade, with buyer/seller IDs
-{"type": "order", "data": {...}}      // Order updates
-{"type": "position", "data": {...}}   // Position changes
-{"type": "orderbook", "data": {...}}  // Book updates (subscribe per instrument)
+{"type": "trade", "data": {...}}           // Every trade with leverage info
+{"type": "order", "data": {...}}           // Order updates
+{"type": "position", "data": {...}}        // Position changes (with leverage)
+{"type": "liquidation", "data": {...}}     // Liquidation events
+{"type": "orderbook", "data": {...}}       // Book updates
+{"type": "funding", "data": {...}}         // Funding rate updates
 ```
 
-### Frontend (Planned)
-- **Framework**: React/Next.js or SvelteKit
-- **Charts**: TradingView lightweight charts or custom D3.js
-- **Real-time**: WebSocket subscriptions
+## Liquidation Engine
 
-## Additional Ideas
+### How It Works
+1. **Continuous Monitoring**: Check all positions every 100ms
+2. **Mark Price**: Use order book mid-price as mark
+3. **Liquidation Trigger**: When mark price crosses liquidation price
+4. **Execution Order**:
+   - Try to close at market price
+   - Insurance fund absorbs losses
+   - If insurance depleted, trigger ADL
 
-### Gamification
-- **Leaderboards**: Daily, weekly, all-time rankings by P&L, Sharpe ratio, win rate
-- **Achievements**: Badges for milestones (first profitable trade, survived a crash, etc.)
-- **Seasons**: Periodic resets with prizes for top performers
-- **Tournaments**: Scheduled competitions with specific rules
+### Insurance Fund
+- Seeded with configurable initial amount
+- Grows from liquidation profits
+- Depletes when liquidation losses exceed position margin
+- Balance is public (transparency!)
 
-### Educational Features
-- **Replay Mode**: Watch historical market events unfold in real-time
-- **Strategy Backtesting**: Test ideas against historical data
-- **Tutorial Challenges**: Learn trading concepts through guided scenarios
-- **Paper Trading**: Risk-free practice mode
+### Auto-Deleveraging (ADL)
+When insurance fund is depleted:
+1. Rank opposite-side traders by profit + leverage
+2. Force-close highest-ranked positions to cover
+3. Notify affected traders in real-time
 
-### Social Features
-- **Trader Profiles**: Public track record, strategy descriptions
-- **Follow System**: Get notifications when followed traders make moves
-- **Copy Trading**: Automatically mirror successful traders (with consent)
-- **Chat/Forums**: Discuss strategies and market conditions
+## Bot SDK
 
-### Analytics Dashboard
-- **Whale Tracking**: Alerts when large positions open/close
-- **Sentiment Indicators**: Long/short ratio, funding rate predictions
-- **Heat Maps**: Liquidation clusters, support/resistance levels
-- **Flow Analysis**: Net buying/selling by trader type
+### Supported Languages
+- **Go**: Native, first-class support
+- **Python**: For quant/ML strategies
+- **TypeScript**: For web-based bots
 
-### Market Mechanics
-- **Funding Rates**: Periodic payments between longs and shorts
-- **Insurance Fund**: Pool to cover liquidation shortfalls
-- **Circuit Breakers**: Automatic halts during extreme volatility
-- **Multiple Instruments**: Perpetuals, dated futures, options
+### SDK Features
+```python
+# Python SDK Example
+from tradere import Client
 
-### Bot Ecosystem
-- **SDK/API**: Easy-to-use libraries for building bots
-- **Strategy Marketplace**: Share/sell trading algorithms
-- **Sandboxed Execution**: Run bots in controlled environment
-- **Performance Attribution**: Detailed bot analytics
+client = Client(api_key="your-api-key")
 
-### Transparency Reports
-- **Daily Summaries**: Aggregate statistics and notable events
-- **Market Health Metrics**: Liquidity depth, spread analysis
-- **Anomaly Detection**: Flag unusual trading patterns
-- **Open Data Export**: Full historical data downloads
+# Get market data
+orderbook = client.get_orderbook()
+positions = client.get_all_positions()  # See everyone's positions!
 
-## Success Metrics
+# Place order with leverage
+order = client.place_order(
+    side="buy",
+    size=1.0,
+    price=1000.0,
+    leverage=50  # Public!
+)
 
-1. **Adoption**: Number of active traders (human + bot)
-2. **Liquidity**: Average bid-ask spread, order book depth
-3. **Engagement**: Trades per user, session duration
-4. **Education**: Tutorial completion rates, strategy diversity
-5. **Community**: Forum activity, shared strategies
+# Stream real-time data
+async for trade in client.stream_trades():
+    print(f"{trade.buyer_id} bought from {trade.seller_id} at {trade.price}")
+    print(f"Buyer leverage: {trade.buyer_leverage}x")
+```
 
-## Roadmap Phases
+## Web Frontend
 
-### Phase 1: Foundation ✅ IN PROGRESS
-- [x] Core matching engine (Go)
-- [x] Order book with price-time priority
-- [x] REST API for trading operations
-- [x] WebSocket real-time feeds
-- [x] Position tracking with P&L
-- [x] Two perpetual instruments (BTC-PERP, ETH-PERP)
-- [ ] Database persistence (TimescaleDB)
-- [ ] Basic web interface
-- [ ] Authentication system
+### Tech Stack
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS
+- **Charts**: Lightweight Charts (TradingView)
+- **State**: Zustand
+- **Real-time**: Native WebSocket
 
-### Phase 2: Transparency
-- [x] OI breakdown endpoint
-- [x] Position explorer (all positions public)
-- [ ] Trade history search with filters
+### Key Views
+1. **Trading View**: Chart, order book, order entry, positions
+2. **Transparency Dashboard**: All positions, OI breakdown, leverage distribution
+3. **Leaderboard**: Rankings by P&L, filterable by leverage tier
+4. **Trader Profile**: Public history, stats, leverage usage
+5. **Liquidation Feed**: Real-time liquidation stream
+
+## Authentication
+
+### Simple Auth Flow
+1. **Registration**: Username + password → JWT token
+2. **Login**: Credentials → JWT token
+3. **API Key**: For bots, generate long-lived API key
+4. **Token Refresh**: Auto-refresh before expiry
+
+### What's Public vs Private
+| Data | Visibility |
+|------|------------|
+| Positions | Public |
+| Leverage | Public |
+| Trade history | Public |
+| P&L | Public |
+| Order book | Public |
+| Open orders | Public |
+| Password | Private |
+| API keys | Private |
+| JWT tokens | Private |
+
+## Roadmap
+
+### Phase 1: Core (Current Sprint)
+- [x] Matching engine
+- [x] Order book
+- [x] REST API skeleton
+- [x] WebSocket feeds
+- [ ] **R.index instrument** (replacing BTC/ETH)
+- [ ] **Leverage system (1-150x)**
+- [ ] **PostgreSQL persistence**
+- [ ] **Config file support**
+- [ ] **Simple auth (JWT)**
+- [ ] **Liquidation engine**
+- [ ] **Bot SDK (Go)**
+- [ ] **Basic web frontend**
+
+### Phase 2: Polish
+- [ ] Python SDK
+- [ ] TypeScript SDK
+- [ ] Funding rate mechanism
+- [ ] Insurance fund
+- [ ] ADL system
 - [ ] Historical data API
-- [ ] Liquidation tracking
 
 ### Phase 3: Social
-- [ ] Trader profiles with track record
-- [ ] Leaderboards (P&L, Sharpe, win rate)
+- [ ] Leaderboards
+- [ ] Trader profiles
 - [ ] Follow system
 - [ ] Activity feed
 
-### Phase 4: Ecosystem
-- [ ] Bot SDK (Go, Python, TypeScript)
-- [ ] Strategy marketplace
+### Phase 4: Advanced
 - [ ] Tournaments
+- [ ] Strategy marketplace
 - [ ] Mobile app
 
 ## Development
 
-### Running the Server
+### Prerequisites
+- Go 1.21+
+- PostgreSQL 15+
+- Node.js 18+ (for frontend)
+
+### Quick Start
 ```bash
-# Build and run
+# Clone
+git clone https://github.com/thatreguy/trade.re.git
+cd trade.re
+
+# Setup database
+createdb tradere
+psql tradere < schema.sql
+
+# Configure
+cp config/config.example.yaml config/config.yaml
+# Edit config.yaml with your settings
+
+# Run server
 go run ./cmd/server
 
-# Or build binary
-go build -o trade.re ./cmd/server
-./trade.re
-
-# With custom port
-PORT=3000 go run ./cmd/server
+# Run frontend (separate terminal)
+cd web && npm install && npm run dev
 ```
 
-### Testing the API
+### Environment Variables
 ```bash
-# Create a trader
-curl -X POST http://localhost:8080/api/v1/traders \
-  -H "Content-Type: application/json" \
-  -d '{"username": "alice", "type": "human"}'
-
-# Submit a limit order
-curl -X POST http://localhost:8080/api/v1/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "trader_id": "<trader-uuid>",
-    "instrument": "BTC-PERP",
-    "side": "buy",
-    "type": "limit",
-    "price": "50000",
-    "size": "1"
-  }'
-
-# Get order book
-curl http://localhost:8080/api/v1/instruments/BTC-PERP/orderbook
-
-# Get all positions (transparency!)
-curl http://localhost:8080/api/v1/instruments/BTC-PERP/positions
-
-# Get OI breakdown
-curl http://localhost:8080/api/v1/instruments/BTC-PERP/oi
-```
-
-### WebSocket Testing
-```javascript
-const ws = new WebSocket('ws://localhost:8080/ws');
-ws.onmessage = (e) => console.log(JSON.parse(e.data));
-// Subscribe to order book updates
-ws.send(JSON.stringify({type: 'subscribe', data: 'orderbook:BTC-PERP'}));
+DB_PASSWORD=your_db_password
+JWT_SECRET=your_jwt_secret_min_32_chars
 ```
 
 ## Open Questions
 
-1. Should there be any virtual currency/points, or use play money?
-2. How to prevent wash trading and self-dealing?
-3. What anti-manipulation rules should exist?
-4. How to balance bot vs human traders fairly?
-5. Should market maker positions have different visibility rules?
+1. ~~Should there be virtual currency?~~ → Yes, play money with configurable starting balance
+2. How to prevent wash trading? → Same-trader order matching already prevented
+3. What anti-manipulation rules? → Position limits, order rate limits
+4. Bot vs human fairness? → Separate leaderboards, same rules
+5. ~~Leverage visibility?~~ → **Yes, fully public**
 
 ## References
 
-- [BitMEX Research on OI](https://blog.bitmex.com/)
-- [Deribit Insights](https://insights.deribit.com/)
-- [Paradigm Research](https://www.paradigm.xyz/)
+- [BitMEX Perpetual Contracts](https://www.bitmex.com/app/perpetualContractsGuide)
+- [Binance Futures Leverage](https://www.binance.com/en/support/faq/leverage-and-margin-of-usd%E2%93%A2-m-futures)
+- [Deribit Liquidation](https://www.deribit.com/kb/liquidations)
