@@ -141,13 +141,13 @@ def main():
     mm = MarketMaker(
         trader_id=trader_id,
         token=token,
-        spread=0.3,      # 0.3% tighter spread for more fills
-        order_size=3.0,  # 3 units per order
+        spread=0.5,      # 0.5% spread
+        order_size=1.0,  # 1 unit per order - thin book for price movement
         leverage=5,      # Conservative 5x leverage
-        num_levels=5     # 5 levels on each side for more depth
+        num_levels=2     # Only 2 levels - keeps book thin so trades move price
     )
 
-    mm.run(interval=3)  # Update every 3 seconds for more activity
+    mm.run(interval=5)  # Update every 5 seconds
 
 
 if __name__ == "__main__":

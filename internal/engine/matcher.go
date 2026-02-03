@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/thatreguy/trade.re/internal/config"
 	"github.com/thatreguy/trade.re/internal/db"
 	"github.com/thatreguy/trade.re/internal/domain"
 )
@@ -18,17 +19,22 @@ type TradeHandler func(trade *domain.Trade)
 // OrderHandler is called when an order is updated
 type OrderHandler func(order *domain.Order)
 
+// LiquidationHandler is called when a liquidation occurs
+type LiquidationHandler func(liq *domain.Liquidation)
+
 // MatchingEngine handles order matching for all instruments
 type MatchingEngine struct {
-	books         map[string]*OrderBook
-	positions     map[string]*domain.Position // key: traderID:instrument
-	traders       map[uuid.UUID]*domain.Trader
-	recentTrades  []*domain.Trade       // Recent trades for history
-	liquidations  []*domain.Liquidation // Liquidation history
-	mu            sync.RWMutex
-	tradeHandlers []TradeHandler
-	orderHandlers []OrderHandler
-	db            *db.SQLiteDB // Optional database for persistence
+	books               map[string]*OrderBook
+	positions           map[string]*domain.Position // key: traderID:instrument
+	traders             map[uuid.UUID]*domain.Trader
+	recentTrades        []*domain.Trade       // Recent trades for history
+	liquidations        []*domain.Liquidation // Liquidation history
+	mu                  sync.RWMutex
+	tradeHandlers       []TradeHandler
+	orderHandlers       []OrderHandler
+	liquidationHandlers []LiquidationHandler
+	db                  *db.SQLiteDB // Optional database for persistence
+	liqConfig           *config.LiquidationConfig
 }
 
 // NewMatchingEngine creates a new matching engine
@@ -425,6 +431,11 @@ func (me *MatchingEngine) updatePosition(traderID uuid.UUID, instrument string, 
 	pos.Size = newSize
 	pos.UpdatedAt = time.Now()
 
+	// Calculate liquidation price if position exists
+	if !newSize.IsZero() {
+		pos.LiquidationPrice = me.calculateLiquidationPrice(pos.EntryPrice, pos.Leverage, newSize.IsPositive())
+	}
+
 	// Persist position to database
 	if me.db != nil {
 		if newSize.IsZero() {
@@ -613,6 +624,192 @@ func (me *MatchingEngine) GetRecentLiquidations(instrument string, limit int) []
 	return liqs
 }
 
+// GetCandles returns OHLCV candles for an instrument
+func (me *MatchingEngine) GetCandles(instrument string, interval domain.CandleInterval, limit int) []*domain.Candle {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	// Get interval duration
+	intervalDuration := getIntervalDuration(interval)
+
+	// Group trades by candle period
+	candleMap := make(map[int64]*domain.Candle)
+
+	for _, t := range me.recentTrades {
+		if t.Instrument != instrument {
+			continue
+		}
+
+		// Calculate candle start time (truncate to interval)
+		candleStart := truncateToInterval(t.Timestamp, intervalDuration)
+		candleKey := candleStart.Unix()
+
+		candle, exists := candleMap[candleKey]
+		if !exists {
+			candle = &domain.Candle{
+				Instrument: instrument,
+				Interval:   interval,
+				OpenTime:   candleStart,
+				CloseTime:  candleStart.Add(intervalDuration),
+				Open:       t.Price,
+				High:       t.Price,
+				Low:        t.Price,
+				Close:      t.Price,
+				Volume:     t.Size,
+				TradeCount: 1,
+			}
+			candleMap[candleKey] = candle
+		} else {
+			// Update OHLCV - trades are newest first, so this trade is older
+			candle.Open = t.Price // Keep updating open since we iterate newest->oldest
+			if t.Price.GreaterThan(candle.High) {
+				candle.High = t.Price
+			}
+			if t.Price.LessThan(candle.Low) {
+				candle.Low = t.Price
+			}
+			candle.Volume = candle.Volume.Add(t.Size)
+			candle.TradeCount++
+		}
+	}
+
+	// Convert map to sorted slice (newest first)
+	var candles []*domain.Candle
+	for _, c := range candleMap {
+		candles = append(candles, c)
+	}
+
+	// Sort by open time descending (newest first)
+	for i := 0; i < len(candles)-1; i++ {
+		for j := i + 1; j < len(candles); j++ {
+			if candles[j].OpenTime.After(candles[i].OpenTime) {
+				candles[i], candles[j] = candles[j], candles[i]
+			}
+		}
+	}
+
+	// Limit results
+	if len(candles) > limit {
+		candles = candles[:limit]
+	}
+
+	return candles
+}
+
+// GetHistoricalTrades returns trades within a time range
+func (me *MatchingEngine) GetHistoricalTrades(instrument string, start, end time.Time, limit int) []*domain.Trade {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	var trades []*domain.Trade
+	for _, t := range me.recentTrades {
+		if t.Instrument != instrument {
+			continue
+		}
+		if t.Timestamp.Before(start) || t.Timestamp.After(end) {
+			continue
+		}
+		trades = append(trades, t)
+		if len(trades) >= limit {
+			break
+		}
+	}
+	return trades
+}
+
+// GetHistoricalCandles returns candles within a time range
+func (me *MatchingEngine) GetHistoricalCandles(instrument string, interval domain.CandleInterval, start, end time.Time, limit int) []*domain.Candle {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	intervalDuration := getIntervalDuration(interval)
+	candleMap := make(map[int64]*domain.Candle)
+
+	for _, t := range me.recentTrades {
+		if t.Instrument != instrument {
+			continue
+		}
+		if t.Timestamp.Before(start) || t.Timestamp.After(end) {
+			continue
+		}
+
+		candleStart := truncateToInterval(t.Timestamp, intervalDuration)
+		candleKey := candleStart.Unix()
+
+		candle, exists := candleMap[candleKey]
+		if !exists {
+			candle = &domain.Candle{
+				Instrument: instrument,
+				Interval:   interval,
+				OpenTime:   candleStart,
+				CloseTime:  candleStart.Add(intervalDuration),
+				Open:       t.Price,
+				High:       t.Price,
+				Low:        t.Price,
+				Close:      t.Price,
+				Volume:     t.Size,
+				TradeCount: 1,
+			}
+			candleMap[candleKey] = candle
+		} else {
+			candle.Open = t.Price
+			if t.Price.GreaterThan(candle.High) {
+				candle.High = t.Price
+			}
+			if t.Price.LessThan(candle.Low) {
+				candle.Low = t.Price
+			}
+			candle.Volume = candle.Volume.Add(t.Size)
+			candle.TradeCount++
+		}
+	}
+
+	var candles []*domain.Candle
+	for _, c := range candleMap {
+		candles = append(candles, c)
+	}
+
+	// Sort by open time ascending (oldest first for historical)
+	for i := 0; i < len(candles)-1; i++ {
+		for j := i + 1; j < len(candles); j++ {
+			if candles[j].OpenTime.Before(candles[i].OpenTime) {
+				candles[i], candles[j] = candles[j], candles[i]
+			}
+		}
+	}
+
+	if len(candles) > limit {
+		candles = candles[:limit]
+	}
+
+	return candles
+}
+
+// getIntervalDuration converts interval string to duration
+func getIntervalDuration(interval domain.CandleInterval) time.Duration {
+	switch interval {
+	case domain.CandleInterval1m:
+		return time.Minute
+	case domain.CandleInterval5m:
+		return 5 * time.Minute
+	case domain.CandleInterval15m:
+		return 15 * time.Minute
+	case domain.CandleInterval1h:
+		return time.Hour
+	case domain.CandleInterval4h:
+		return 4 * time.Hour
+	case domain.CandleInterval1d:
+		return 24 * time.Hour
+	default:
+		return time.Minute
+	}
+}
+
+// truncateToInterval truncates time to interval boundary
+func truncateToInterval(t time.Time, d time.Duration) time.Time {
+	return t.UTC().Truncate(d)
+}
+
 // GetMarketStats returns market statistics for an instrument
 func (me *MatchingEngine) GetMarketStats(instrument string) *domain.MarketStats {
 	me.mu.RLock()
@@ -664,4 +861,114 @@ func (me *MatchingEngine) GetMarketStats(instrument string) *domain.MarketStats 
 	}
 
 	return stats
+}
+
+// SetLiquidationConfig sets the liquidation configuration for calculating liquidation prices
+func (me *MatchingEngine) SetLiquidationConfig(cfg *config.LiquidationConfig) {
+	me.liqConfig = cfg
+}
+
+// GetMarkPrice returns the current mark price for an instrument (implements PriceProvider)
+func (me *MatchingEngine) GetMarkPrice(instrument string) decimal.Decimal {
+	me.mu.RLock()
+	defer me.mu.RUnlock()
+
+	// Get last trade price as mark price
+	for _, t := range me.recentTrades {
+		if t.Instrument == instrument {
+			return t.Price
+		}
+	}
+
+	// Default to 1000 if no trades
+	return decimal.NewFromInt(1000)
+}
+
+// ClosePosition closes a position at the given mark price (implements PositionStore)
+func (me *MatchingEngine) ClosePosition(traderID uuid.UUID, instrument string, markPrice decimal.Decimal) error {
+	me.mu.Lock()
+	defer me.mu.Unlock()
+
+	posKey := fmt.Sprintf("%s:%s", traderID, instrument)
+	pos, exists := me.positions[posKey]
+	if !exists || pos.Size.IsZero() {
+		return fmt.Errorf("no position to close")
+	}
+
+	// Calculate realized P&L
+	var pnl decimal.Decimal
+	if pos.IsLong() {
+		pnl = markPrice.Sub(pos.EntryPrice).Mul(pos.Size)
+	} else {
+		pnl = pos.EntryPrice.Sub(markPrice).Mul(pos.Size.Abs())
+	}
+
+	// Update trader balance
+	if trader, ok := me.traders[traderID]; ok {
+		trader.Balance = trader.Balance.Add(pos.Margin).Add(pnl)
+		trader.TotalPnL = trader.TotalPnL.Add(pnl)
+		if me.db != nil {
+			if err := me.db.SaveTrader(trader); err != nil {
+				log.Printf("Error saving trader after liquidation: %v", err)
+			}
+		}
+	}
+
+	// Delete position
+	delete(me.positions, posKey)
+	if me.db != nil {
+		if err := me.db.DeletePosition(traderID, instrument); err != nil {
+			log.Printf("Error deleting liquidated position: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// OnLiquidation registers a liquidation handler
+func (me *MatchingEngine) OnLiquidation(handler LiquidationHandler) {
+	me.liquidationHandlers = append(me.liquidationHandlers, handler)
+}
+
+// AddLiquidation adds a liquidation to history and notifies handlers
+func (me *MatchingEngine) AddLiquidation(liq *domain.Liquidation) {
+	me.mu.Lock()
+	defer me.mu.Unlock()
+
+	// Add to history
+	me.liquidations = append([]*domain.Liquidation{liq}, me.liquidations...)
+	if len(me.liquidations) > 100 {
+		me.liquidations = me.liquidations[:100]
+	}
+
+	// Persist to database
+	if me.db != nil {
+		if err := me.db.SaveLiquidation(liq); err != nil {
+			log.Printf("Error saving liquidation: %v", err)
+		}
+	}
+
+	// Notify handlers
+	for _, handler := range me.liquidationHandlers {
+		handler(liq)
+	}
+}
+
+// calculateLiquidationPrice computes liquidation price for a position
+func (me *MatchingEngine) calculateLiquidationPrice(entryPrice decimal.Decimal, leverage int, isLong bool) decimal.Decimal {
+	if me.liqConfig == nil {
+		// Default maintenance margins if not configured
+		return decimal.Zero
+	}
+
+	maintMargin := me.liqConfig.MaintenanceMargins.GetMarginForLeverage(leverage)
+	leverageDecimal := decimal.NewFromInt(int64(leverage))
+
+	// Liquidation distance = entry / leverage * (1 - maintenance margin)
+	distance := entryPrice.Div(leverageDecimal).Mul(decimal.NewFromInt(1).Sub(maintMargin))
+
+	if isLong {
+		return entryPrice.Sub(distance)
+	}
+	return entryPrice.Add(distance)
 }

@@ -25,6 +25,7 @@ const (
 	TypePosition     MessageType = "position"
 	TypeOrder        MessageType = "order"
 	TypeOI           MessageType = "oi"
+	TypeLiquidation  MessageType = "liquidation"
 	TypeSubscribe    MessageType = "subscribe"
 	TypeUnsubscribe  MessageType = "unsubscribe"
 )

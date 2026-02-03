@@ -38,13 +38,14 @@ export default function TradePage() {
   }, [isAuthenticated, fetchUserData])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
       {/* Market Stats Bar */}
       <MarketStats />
 
-      <div className="grid grid-cols-12 gap-4 mt-4">
-        {/* Order Book */}
-        <div className="col-span-3">
+      {/* Mobile: Stack vertically, Desktop: 12-column grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
+        {/* Order Book - Hidden on mobile, shown on tablet+ */}
+        <div className="hidden md:block lg:col-span-3">
           <div className="bg-trade-card rounded-lg border border-trade-border p-4">
             <h2 className="text-sm font-medium text-gray-400 mb-4">Order Book</h2>
             <OrderBook />
@@ -52,10 +53,10 @@ export default function TradePage() {
         </div>
 
         {/* Chart Area */}
-        <div className="col-span-6">
-          <div className="bg-trade-card rounded-lg border border-trade-border p-4">
+        <div className="lg:col-span-6">
+          <div className="bg-trade-card rounded-lg border border-trade-border p-3 sm:p-4">
             <h2 className="text-sm font-medium text-gray-400 mb-2">R.index Chart</h2>
-            <div className="h-[340px]">
+            <div className="h-[250px] sm:h-[340px]">
               <Chart />
             </div>
           </div>
@@ -67,8 +68,14 @@ export default function TradePage() {
         </div>
 
         {/* Recent Trades & Positions */}
-        <div className="col-span-3 space-y-4">
-          <div className="bg-trade-card rounded-lg border border-trade-border p-4 h-[280px]">
+        <div className="lg:col-span-3 space-y-4">
+          {/* Order Book - Mobile only */}
+          <div className="md:hidden bg-trade-card rounded-lg border border-trade-border p-4 max-h-[200px] overflow-auto">
+            <h2 className="text-sm font-medium text-gray-400 mb-2">Order Book</h2>
+            <OrderBook />
+          </div>
+
+          <div className="bg-trade-card rounded-lg border border-trade-border p-4 h-[200px] sm:h-[280px] overflow-auto">
             <h2 className="text-sm font-medium text-gray-400 mb-2">Recent Trades</h2>
             <RecentTrades />
           </div>
@@ -81,12 +88,12 @@ export default function TradePage() {
       </div>
 
       {/* Transparency Banner */}
-      <div className="mt-6 bg-purple-900/30 border border-purple-700 rounded-lg p-4">
-        <div className="flex items-center">
-          <span className="text-purple-400 mr-2">&#128064;</span>
-          <span className="text-purple-200 text-sm">
+      <div className="mt-6 bg-purple-900/30 border border-purple-700 rounded-lg p-3 sm:p-4">
+        <div className="flex items-start sm:items-center">
+          <span className="text-purple-400 mr-2 text-lg">&#128064;</span>
+          <span className="text-purple-200 text-xs sm:text-sm">
             <strong>Radical Transparency:</strong> All positions, leverage, and trades are public.
-            Everyone can see who's long, who's short, and at what leverage. No hidden information.
+            Everyone can see who's long, who's short, and at what leverage.
           </span>
         </div>
       </div>

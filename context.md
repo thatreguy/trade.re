@@ -262,6 +262,10 @@ GET  /api/v1/market/liquidations           # Recent liquidations
 GET  /api/v1/market/stats                  # Market statistics
 GET  /api/v1/market/candles                # OHLCV candles (1m, 5m, 1h, 1d)
 
+# Historical Data (Public!)
+GET  /api/v1/history/trades                # Trades with time range filter
+GET  /api/v1/history/candles               # Candles with time range filter
+
 # Trading (Authenticated)
 POST   /api/v1/orders                      # Submit order
 DELETE /api/v1/orders/{id}                 # Cancel order
@@ -379,12 +383,12 @@ Two stores in `web/src/store/`:
 - [x] OI impact indicators (OI+/OI-/OI= on trades)
 - [x] Trader trade history endpoint
 
-### Phase 3: Persistence & Polish
+### Phase 3: Persistence & Polish ✅ DONE
 - [x] **SQLite persistence** (data survives restarts)
-- [ ] Candle data API (daily @ 00:00 UTC)
-- [ ] Liquidation engine
-- [ ] Historical data API
-- [ ] Mobile responsive
+- [x] Candle data API (1m, 5m, 15m, 1h, 4h, 1d intervals)
+- [x] Liquidation engine (monitors positions, executes liquidations)
+- [x] Historical data API (trades and candles with time range filters)
+- [x] Mobile responsive (all pages work on mobile)
 
 ### Phase 4: Social
 - [ ] Follow traders
@@ -440,9 +444,9 @@ Trade.re comes with two example bots in the `bots/` directory:
 
 #### 1. Market Maker (`market_maker.py`)
 Provides liquidity by posting bid/ask orders around the current price.
-- Posts orders at 5 price levels on each side
-- Tight spread (0.3%) for more fills
-- Updates every 3 seconds
+- Posts orders at 2 price levels on each side (thin book for price movement)
+- 0.5% spread, 1 unit per level
+- Updates every 5 seconds
 - Uses conservative leverage (5x)
 - Registers as `market_maker` type
 
@@ -468,9 +472,10 @@ python news_trader.py
 #### 3. Random Trader (`random_trader.py`)
 Generates consistent trading activity with random market orders.
 - Randomly buys or sells to create price movement
-- Trades every ~5 seconds
+- Order sizes 2-5 units (sweeps through thin orderbook)
+- Trades every ~3 seconds for active price action
 - Uses moderate leverage (10x)
-- Helps maintain active orderbook
+- Creates dynamic price movement
 
 ```bash
 python random_trader.py

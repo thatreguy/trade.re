@@ -10,13 +10,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/thatreguy/trade.re/internal/api"
+	"github.com/thatreguy/trade.re/internal/config"
 	"github.com/thatreguy/trade.re/internal/db"
 	"github.com/thatreguy/trade.re/internal/domain"
 	"github.com/thatreguy/trade.re/internal/engine"
+	"github.com/thatreguy/trade.re/internal/liquidation"
 	"github.com/thatreguy/trade.re/internal/ws"
 )
 
 func main() {
+	// Load configuration
+	cfg := config.LoadOrDefault("config/config.yaml")
+
 	// Get database path from env or default to ./data/tradere.db
 	dbPath := os.Getenv("DATABASE_PATH")
 	if dbPath == "" {
@@ -42,6 +47,9 @@ func main() {
 
 	// Connect database to engine
 	eng.SetDatabase(database)
+
+	// Set liquidation config for margin calculations
+	eng.SetLiquidationConfig(&cfg.Liquidation)
 
 	// Register R.index - the only tradeable instrument
 	eng.RegisterInstrument("R.index")
@@ -73,6 +81,19 @@ func main() {
 			Data: order,
 		})
 	})
+
+	// Initialize and start liquidation engine
+	liqEngine := liquidation.NewEngine(cfg.Liquidation, eng, eng)
+	liqEngine.OnLiquidation(func(liq *domain.Liquidation) {
+		// Add to matching engine history and broadcast
+		eng.AddLiquidation(liq)
+		hub.Broadcast(ws.Message{
+			Type: ws.TypeLiquidation,
+			Data: liq,
+		})
+	})
+	liqEngine.Start()
+	defer liqEngine.Stop()
 
 	// Create API server
 	server := api.NewServer(eng, hub)
@@ -114,6 +135,9 @@ func main() {
 	log.Printf("  GET  /api/v1/market/positions")
 	log.Printf("  GET  /api/v1/market/trades")
 	log.Printf("  GET  /api/v1/market/stats")
+	log.Printf("  GET  /api/v1/market/candles")
+	log.Printf("  GET  /api/v1/history/trades")
+	log.Printf("  GET  /api/v1/history/candles")
 	log.Printf("  POST /api/v1/orders")
 	log.Printf("  DELETE /api/v1/orders/{id}")
 	log.Printf("")

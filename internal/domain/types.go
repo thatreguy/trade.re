@@ -252,3 +252,29 @@ type MarketStats struct {
 	InsuranceFund    decimal.Decimal `json:"insurance_fund"`
 	Timestamp        time.Time       `json:"timestamp"`
 }
+
+// CandleInterval represents the timeframe for candles
+type CandleInterval string
+
+const (
+	CandleInterval1m  CandleInterval = "1m"
+	CandleInterval5m  CandleInterval = "5m"
+	CandleInterval15m CandleInterval = "15m"
+	CandleInterval1h  CandleInterval = "1h"
+	CandleInterval4h  CandleInterval = "4h"
+	CandleInterval1d  CandleInterval = "1d"
+)
+
+// Candle represents OHLCV data for a time period
+type Candle struct {
+	Instrument string          `json:"instrument"`
+	Interval   CandleInterval  `json:"interval"`
+	OpenTime   time.Time       `json:"open_time"`  // Start of candle period (UTC)
+	CloseTime  time.Time       `json:"close_time"` // End of candle period (UTC)
+	Open       decimal.Decimal `json:"open"`
+	High       decimal.Decimal `json:"high"`
+	Low        decimal.Decimal `json:"low"`
+	Close      decimal.Decimal `json:"close"`
+	Volume     decimal.Decimal `json:"volume"`     // Total traded volume
+	TradeCount int64           `json:"trade_count"` // Number of trades in period
+}

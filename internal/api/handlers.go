@@ -82,6 +82,13 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 			r.Get("/trades", s.handleGetMarketTrades)
 			r.Get("/liquidations", s.handleGetMarketLiquidations)
 			r.Get("/stats", s.handleGetMarketStats)
+			r.Get("/candles", s.handleGetMarketCandles)
+		})
+
+		// Historical data API
+		r.Route("/history", func(r chi.Router) {
+			r.Get("/trades", s.handleGetHistoricalTrades)
+			r.Get("/candles", s.handleGetHistoricalCandles)
 		})
 
 		// Auth (simplified for now)
@@ -394,6 +401,142 @@ func (s *Server) handleGetMarketLiquidations(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleGetMarketStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.engine.GetMarketStats("R.index")
 	respondJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleGetMarketCandles(w http.ResponseWriter, r *http.Request) {
+	// Parse interval (default: 1m)
+	intervalStr := r.URL.Query().Get("interval")
+	interval := domain.CandleInterval1m
+	switch intervalStr {
+	case "1m":
+		interval = domain.CandleInterval1m
+	case "5m":
+		interval = domain.CandleInterval5m
+	case "15m":
+		interval = domain.CandleInterval15m
+	case "1h":
+		interval = domain.CandleInterval1h
+	case "4h":
+		interval = domain.CandleInterval4h
+	case "1d":
+		interval = domain.CandleInterval1d
+	}
+
+	// Parse limit (default: 100)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
+			limit = l
+		}
+	}
+
+	candles := s.engine.GetCandles("R.index", interval, limit)
+	respondJSON(w, http.StatusOK, candles)
+}
+
+// Historical data endpoints
+
+func (s *Server) handleGetHistoricalTrades(w http.ResponseWriter, r *http.Request) {
+	// Parse time range
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	var startTime, endTime time.Time
+	if startStr != "" {
+		if t, err := time.Parse(time.RFC3339, startStr); err == nil {
+			startTime = t
+		} else if ts, err := strconv.ParseInt(startStr, 10, 64); err == nil {
+			startTime = time.UnixMilli(ts)
+		}
+	}
+	if endStr != "" {
+		if t, err := time.Parse(time.RFC3339, endStr); err == nil {
+			endTime = t
+		} else if ts, err := strconv.ParseInt(endStr, 10, 64); err == nil {
+			endTime = time.UnixMilli(ts)
+		}
+	}
+
+	// Default: last 24 hours
+	if startTime.IsZero() {
+		startTime = time.Now().Add(-24 * time.Hour)
+	}
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+
+	// Parse limit
+	limitStr := r.URL.Query().Get("limit")
+	limit := 500
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 5000 {
+			limit = l
+		}
+	}
+
+	trades := s.engine.GetHistoricalTrades("R.index", startTime, endTime, limit)
+	respondJSON(w, http.StatusOK, trades)
+}
+
+func (s *Server) handleGetHistoricalCandles(w http.ResponseWriter, r *http.Request) {
+	// Parse interval
+	intervalStr := r.URL.Query().Get("interval")
+	interval := domain.CandleInterval1h
+	switch intervalStr {
+	case "1m":
+		interval = domain.CandleInterval1m
+	case "5m":
+		interval = domain.CandleInterval5m
+	case "15m":
+		interval = domain.CandleInterval15m
+	case "1h":
+		interval = domain.CandleInterval1h
+	case "4h":
+		interval = domain.CandleInterval4h
+	case "1d":
+		interval = domain.CandleInterval1d
+	}
+
+	// Parse time range
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	var startTime, endTime time.Time
+	if startStr != "" {
+		if t, err := time.Parse(time.RFC3339, startStr); err == nil {
+			startTime = t
+		} else if ts, err := strconv.ParseInt(startStr, 10, 64); err == nil {
+			startTime = time.UnixMilli(ts)
+		}
+	}
+	if endStr != "" {
+		if t, err := time.Parse(time.RFC3339, endStr); err == nil {
+			endTime = t
+		} else if ts, err := strconv.ParseInt(endStr, 10, 64); err == nil {
+			endTime = time.UnixMilli(ts)
+		}
+	}
+
+	// Default: last 7 days for candles
+	if startTime.IsZero() {
+		startTime = time.Now().Add(-7 * 24 * time.Hour)
+	}
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+
+	// Parse limit
+	limitStr := r.URL.Query().Get("limit")
+	limit := 500
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 5000 {
+			limit = l
+		}
+	}
+
+	candles := s.engine.GetHistoricalCandles("R.index", interval, startTime, endTime, limit)
+	respondJSON(w, http.StatusOK, candles)
 }
 
 // Auth handlers (simplified - no real auth for now)

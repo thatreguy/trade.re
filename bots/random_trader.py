@@ -134,15 +134,16 @@ def main():
     trader_id, token = register_bot()
 
     # Create and run random trader
+    # Larger orders to sweep through thin orderbook and move price
     trader = RandomTrader(
         trader_id=trader_id,
         token=token,
-        min_size=1.0,
-        max_size=3.0,
+        min_size=2.0,   # Bigger min to move through levels
+        max_size=5.0,   # Larger max for bigger price swings
         leverage=10
     )
 
-    trader.run(interval=5)  # Trade roughly every 5 seconds
+    trader.run(interval=3)  # Trade every 3 seconds for more activity
 
 
 if __name__ == "__main__":
