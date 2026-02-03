@@ -12,9 +12,17 @@ export default function OrderBook() {
     return () => clearInterval(interval)
   }, [fetchOrderBook])
 
-  // Default empty state
-  const bids = orderBook?.bids || []
-  const asks = orderBook?.asks || []
+  // Parse string values from API to numbers
+  const bids = (orderBook?.bids || []).map(b => ({
+    price: parseFloat(b.price) || 0,
+    size: parseFloat(b.size) || 0,
+    order_count: b.order_count || 0
+  }))
+  const asks = (orderBook?.asks || []).map(a => ({
+    price: parseFloat(a.price) || 0,
+    size: parseFloat(a.size) || 0,
+    order_count: a.order_count || 0
+  }))
 
   const maxSize = Math.max(
     ...bids.map(b => b.size),

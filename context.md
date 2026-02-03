@@ -357,10 +357,13 @@ Two stores in `web/src/store/`:
 - [x] Liquidations page
 - [x] Trader profile page
 
-### Phase 2: Integration (Current)
-- [ ] Wire up API to frontend
-- [ ] Real-time WebSocket in UI
-- [ ] TradingView chart integration
+### Phase 2: Integration ✅ DONE
+- [x] Wire up API to frontend
+- [x] Real-time data polling (orderbook, trades, stats)
+- [x] Auth endpoints (register/login)
+- [x] Market maker bot
+- [x] News sentiment trading bot
+- [x] TradingView chart integration (1-minute candles from trades)
 - [ ] Candle data API (daily @ 00:00 UTC)
 
 ### Phase 3: Polish
@@ -460,6 +463,17 @@ All bot positions are **PUBLIC** - everyone can see:
 - Their P&L performance
 
 This is Trade.re's core philosophy: no hidden information advantages.
+
+## API Notes
+
+### Decimal Values
+All monetary/numeric values (prices, sizes, balances, P&L) are returned as **strings** from the API to preserve precision. Frontend must parse them:
+```typescript
+const price = parseFloat(response.last_price) || 0
+const size = parseFloat(response.size) || 0
+```
+
+This applies to: `price`, `size`, `balance`, `total_pnl`, `margin`, `unrealized_pnl`, `entry_price`, `liquidation_price`, `volume_24h`, `open_interest`, `insurance_fund`, etc.
 
 ## Design Decisions
 

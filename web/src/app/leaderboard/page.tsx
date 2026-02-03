@@ -17,6 +17,15 @@ export default function LeaderboardPage() {
     return () => clearInterval(interval)
   }, [fetchTraders])
 
+  // Parse trader values from API strings to numbers
+  const parsedTraders = traders.map(t => ({
+    ...t,
+    balance: parseFloat(t.balance) || 0,
+    total_pnl: parseFloat(t.total_pnl) || 0,
+    trade_count: t.trade_count || 0,
+    max_leverage_used: t.max_leverage_used || 0
+  }))
+
   const getLeverageTier = (leverage: number) => {
     if (leverage <= 10) return 'conservative'
     if (leverage <= 50) return 'moderate'
@@ -37,7 +46,7 @@ export default function LeaderboardPage() {
     }
   }
 
-  const filteredTraders = traders
+  const filteredTraders = parsedTraders
     .filter(t => {
       if (typeFilter !== 'all' && t.type !== typeFilter) return false
       if (leverageFilter !== 'all' && getLeverageTier(t.max_leverage_used) !== leverageFilter) return false
@@ -52,10 +61,10 @@ export default function LeaderboardPage() {
       }
     })
 
-  const totalPnlPositive = traders.filter(t => t.total_pnl > 0).length
-  const totalPnlNegative = traders.filter(t => t.total_pnl < 0).length
-  const avgLeverage = traders.length > 0
-    ? traders.reduce((sum, t) => sum + t.max_leverage_used, 0) / traders.length
+  const totalPnlPositive = parsedTraders.filter(t => t.total_pnl > 0).length
+  const totalPnlNegative = parsedTraders.filter(t => t.total_pnl < 0).length
+  const avgLeverage = parsedTraders.length > 0
+    ? parsedTraders.reduce((sum, t) => sum + t.max_leverage_used, 0) / parsedTraders.length
     : 0
 
   return (

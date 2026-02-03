@@ -1,11 +1,15 @@
 'use client'
 
 import { useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import OrderBook from '@/components/OrderBook'
 import TradeForm from '@/components/TradeForm'
 import RecentTrades from '@/components/RecentTrades'
 import PositionPanel from '@/components/PositionPanel'
 import MarketStats from '@/components/MarketStats'
+
+// Dynamic import for Chart (uses browser APIs)
+const Chart = dynamic(() => import('@/components/Chart'), { ssr: false })
 import { useMarketStore } from '@/store/market'
 import { useUserStore } from '@/store/user'
 
@@ -47,12 +51,12 @@ export default function TradePage() {
           </div>
         </div>
 
-        {/* Chart Area (placeholder) */}
+        {/* Chart Area */}
         <div className="col-span-6">
-          <div className="bg-trade-card rounded-lg border border-trade-border p-4 h-96">
-            <h2 className="text-sm font-medium text-gray-400 mb-4">R.index Chart</h2>
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Chart will be rendered here using TradingView Lightweight Charts
+          <div className="bg-trade-card rounded-lg border border-trade-border p-4">
+            <h2 className="text-sm font-medium text-gray-400 mb-2">R.index Chart</h2>
+            <div className="h-[340px]">
+              <Chart />
             </div>
           </div>
 
@@ -64,13 +68,13 @@ export default function TradePage() {
 
         {/* Recent Trades & Positions */}
         <div className="col-span-3 space-y-4">
-          <div className="bg-trade-card rounded-lg border border-trade-border p-4">
-            <h2 className="text-sm font-medium text-gray-400 mb-4">Recent Trades</h2>
+          <div className="bg-trade-card rounded-lg border border-trade-border p-4 h-[280px]">
+            <h2 className="text-sm font-medium text-gray-400 mb-2">Recent Trades</h2>
             <RecentTrades />
           </div>
 
           <div className="bg-trade-card rounded-lg border border-trade-border p-4">
-            <h2 className="text-sm font-medium text-gray-400 mb-4">Your Position</h2>
+            <h2 className="text-sm font-medium text-gray-400 mb-2">Your Position</h2>
             <PositionPanel />
           </div>
         </div>

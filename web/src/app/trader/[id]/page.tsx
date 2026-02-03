@@ -40,7 +40,33 @@ export default function TraderProfilePage() {
     return () => clearInterval(interval)
   }, [params.id])
 
-  const position = positions[0] || null // R.index position
+  // Parse trader values from API strings to numbers
+  const parsedTrader = trader ? {
+    ...trader,
+    balance: parseFloat(parsedTrader.balance) || 0,
+    total_pnl: parseFloat(parsedTrader.total_pnl) || 0,
+    trade_count: parsedTrader.trade_count || 0,
+    max_leverage_used: parsedTrader.max_leverage_used || 0
+  } : null
+
+  // Parse position values from API strings to numbers
+  const rawPosition = positions[0] || null
+  const position = rawPosition ? {
+    ...rawPosition,
+    size: parseFloat(rawPosition.size) || 0,
+    entry_price: parseFloat(rawPosition.entry_price) || 0,
+    margin: parseFloat(rawPosition.margin) || 0,
+    unrealized_pnl: parseFloat(rawPosition.unrealized_pnl) || 0,
+    liquidation_price: parseFloat(rawPosition.liquidation_price) || 0,
+    leverage: rawPosition.leverage || 1
+  } : null
+
+  // Parse trade values from API strings to numbers
+  const parsedTrades = trades.map(t => ({
+    ...t,
+    price: parseFloat(t.price) || 0,
+    size: parseFloat(t.size) || 0
+  }))
 
   if (isLoading) {
     return (
@@ -50,7 +76,7 @@ export default function TraderProfilePage() {
     )
   }
 
-  if (!trader) {
+  if (!parsedTrader) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="text-center py-12 text-gray-500">Trader not found</div>
@@ -72,7 +98,7 @@ export default function TraderProfilePage() {
     }
   }
 
-  const pnlPercent = ((trader.total_pnl / 10000) * 100).toFixed(1) // Assuming 10k starting balance
+  const pnlPercent = ((parsedTrader.total_pnl / 10000) * 100).toFixed(1) // Assuming 10k starting balance
 
   const formatDate = (dateStr: string) => {
     try {
@@ -89,17 +115,17 @@ export default function TraderProfilePage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center space-x-3">
-              <h1 className="text-2xl font-bold">{trader.username}</h1>
-              <span className={`px-2 py-1 rounded text-xs ${getTraderTypeBadge(trader.type)}`}>
-                {trader.type}
+              <h1 className="text-2xl font-bold">{parsedTrader.username}</h1>
+              <span className={`px-2 py-1 rounded text-xs ${getTraderTypeBadge(parsedTrader.type)}`}>
+                {parsedTrader.type}
               </span>
             </div>
-            <p className="text-gray-500 text-sm mt-1">Member since {formatDate(trader.created_at)}</p>
+            <p className="text-gray-500 text-sm mt-1">Member since {formatDate(parsedTrader.created_at)}</p>
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-500">Max Leverage Used</div>
-            <div className={`text-xl font-bold px-3 py-1 rounded inline-block ${getLeverageBadge(trader.max_leverage_used)}`}>
-              {trader.max_leverage_used}x
+            <div className={`text-xl font-bold px-3 py-1 rounded inline-block ${getLeverageBadge(parsedTrader.max_leverage_used)}`}>
+              {parsedTrader.max_leverage_used}x
             </div>
           </div>
         </div>
@@ -108,23 +134,23 @@ export default function TraderProfilePage() {
         <div className="grid grid-cols-4 gap-6 mt-6">
           <div>
             <div className="text-sm text-gray-500">Balance</div>
-            <div className="text-xl font-bold">${trader.balance.toLocaleString()}</div>
+            <div className="text-xl font-bold">${parsedTrader.balance.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Total P&L</div>
-            <div className={`text-xl font-bold ${trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
-              {trader.total_pnl >= 0 ? '+' : ''}${trader.total_pnl.toLocaleString()}
+            <div className={`text-xl font-bold ${parsedTrader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}`}>
+              {parsedTrader.total_pnl >= 0 ? '+' : ''}${parsedTrader.total_pnl.toLocaleString()}
               <span className="text-sm ml-1">({pnlPercent}%)</span>
             </div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Total Trades</div>
-            <div className="text-xl font-bold">{trader.trade_count}</div>
+            <div className="text-xl font-bold">{parsedTrader.trade_count}</div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Avg Trade Size</div>
             <div className="text-xl font-bold">
-              {trader.trade_count > 0 ? `$${(trader.balance / trader.trade_count * 10).toFixed(0)}` : '-'}
+              {parsedTrader.trade_count > 0 ? `$${(parsedTrader.balance / parsedTrader.trade_count * 10).toFixed(0)}` : '-'}
             </div>
           </div>
         </div>
@@ -224,16 +250,16 @@ export default function TraderProfilePage() {
               </tr>
             </thead>
             <tbody>
-              {trades.length === 0 ? (
+              {parsedTrades.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     No trades yet
                   </td>
                 </tr>
               ) : (
-                trades.map((trade) => {
+                parsedTrades.map((trade) => {
                   // Determine if this trader was buyer or seller
-                  const isBuyer = trade.buyer_id === trader.id
+                  const isBuyer = trade.buyer_id === parsedTrader.id
                   const side = isBuyer ? 'buy' : 'sell'
                   const leverage = isBuyer ? trade.buyer_leverage : trade.seller_leverage
                   const effect = isBuyer ? trade.buyer_effect : trade.seller_effect
@@ -280,13 +306,13 @@ export default function TraderProfilePage() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-500">Max Leverage Used</span>
-                <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(trader.max_leverage_used)}`}>
-                  {trader.max_leverage_used}x
+                <span className={`px-2 py-0.5 rounded text-xs ${getLeverageBadge(parsedTrader.max_leverage_used)}`}>
+                  {parsedTrader.max_leverage_used}x
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Total Trades</span>
-                <span>{trader.trade_count}</span>
+                <span>{parsedTrader.trade_count}</span>
               </div>
             </div>
           </div>
@@ -296,17 +322,17 @@ export default function TraderProfilePage() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-500">Balance</span>
-                <span>${trader.balance.toLocaleString()}</span>
+                <span>${parsedTrader.balance.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Total P&L</span>
-                <span className={trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
-                  {trader.total_pnl >= 0 ? '+' : ''}${trader.total_pnl.toLocaleString()}
+                <span className={parsedTrader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
+                  {parsedTrader.total_pnl >= 0 ? '+' : ''}${parsedTrader.total_pnl.toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">ROI</span>
-                <span className={trader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
+                <span className={parsedTrader.total_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
                   {pnlPercent}%
                 </span>
               </div>

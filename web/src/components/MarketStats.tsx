@@ -12,19 +12,15 @@ export default function MarketStats() {
     return () => clearInterval(interval)
   }, [fetchMarketStats])
 
-  // Default values while loading
-  const stats = marketStats || {
-    last_price: 1000,
-    high_24h: 1000,
-    low_24h: 1000,
-    volume_24h: 0,
-    open_interest: 0,
-    insurance_fund: 1000000,
-  }
+  // Parse string values from API to numbers
+  const lastPrice = parseFloat(marketStats?.last_price) || 1000
+  const high24h = parseFloat(marketStats?.high_24h) || 1000
+  const low24h = parseFloat(marketStats?.low_24h) || 1000
+  const volume24h = parseFloat(marketStats?.volume_24h) || 0
+  const openInterest = parseFloat(marketStats?.open_interest) || 0
+  const insuranceFund = parseFloat(marketStats?.insurance_fund) || 1000000
 
-  const change24h = stats.high_24h > 0
-    ? ((stats.last_price - stats.low_24h) / stats.low_24h * 100)
-    : 0
+  const change24h = low24h > 0 ? ((lastPrice - low24h) / low24h * 100) : 0
   const isPositive = change24h >= 0
 
   return (
@@ -34,7 +30,7 @@ export default function MarketStats() {
         <div className="flex items-center space-x-6">
           <div>
             <div className="text-2xl font-bold">
-              ${stats.last_price.toFixed(2)}
+              ${lastPrice.toFixed(2)}
             </div>
             <div className={`text-sm ${isPositive ? 'text-trade-green' : 'text-trade-red'}`}>
               {isPositive ? '+' : ''}{change24h.toFixed(2)}%
@@ -45,17 +41,17 @@ export default function MarketStats() {
 
           <div className="text-sm">
             <div className="text-gray-500">24h High</div>
-            <div>${stats.high_24h.toFixed(2)}</div>
+            <div>${high24h.toFixed(2)}</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">24h Low</div>
-            <div>${stats.low_24h.toFixed(2)}</div>
+            <div>${low24h.toFixed(2)}</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">24h Volume</div>
-            <div>${(stats.volume_24h / 1000).toFixed(1)}K</div>
+            <div>${(volume24h / 1000).toFixed(1)}K</div>
           </div>
         </div>
 
@@ -63,12 +59,12 @@ export default function MarketStats() {
         <div className="flex items-center space-x-6">
           <div className="text-sm">
             <div className="text-gray-500">Open Interest</div>
-            <div>${(stats.open_interest / 1000).toFixed(1)}K</div>
+            <div>${(openInterest / 1000).toFixed(1)}K</div>
           </div>
 
           <div className="text-sm">
             <div className="text-gray-500">Insurance Fund</div>
-            <div className="text-purple-400">${(stats.insurance_fund / 1000000).toFixed(2)}M</div>
+            <div className="text-purple-400">${(insuranceFund / 1000000).toFixed(2)}M</div>
           </div>
 
           <div className="text-xs text-gray-500">

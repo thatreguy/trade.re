@@ -15,7 +15,16 @@ export default function AllPositionsPage() {
     return () => clearInterval(interval)
   }, [fetchAllPositions])
 
-  const positions = allPositions
+  // Parse position values from API strings to numbers
+  const positions = allPositions.map(p => ({
+    ...p,
+    size: parseFloat(p.size) || 0,
+    entry_price: parseFloat(p.entry_price) || 0,
+    margin: parseFloat(p.margin) || 0,
+    unrealized_pnl: parseFloat(p.unrealized_pnl) || 0,
+    liquidation_price: parseFloat(p.liquidation_price) || 0,
+    leverage: p.leverage || 1
+  }))
 
   const getLeverageBadge = (leverage: number) => {
     const tier = leverage <= 10 ? 'conservative' : leverage <= 50 ? 'moderate' : leverage <= 100 ? 'aggressive' : 'degen'

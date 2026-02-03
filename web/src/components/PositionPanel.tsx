@@ -19,8 +19,16 @@ export default function PositionPanel() {
     )
   }
 
+  // Parse position values from API strings to numbers
+  const posSize = parseFloat(position?.size) || 0
+  const posEntryPrice = parseFloat(position?.entry_price) || 0
+  const posMargin = parseFloat(position?.margin) || 0
+  const posUnrealizedPnl = parseFloat(position?.unrealized_pnl) || 0
+  const posLiqPrice = parseFloat(position?.liquidation_price) || 0
+  const posLeverage = position?.leverage || 1
+
   // No position
-  if (!position || position.size === 0) {
+  if (!position || posSize === 0) {
     return (
       <div className="text-gray-500 text-sm text-center py-4">
         No open position
@@ -28,10 +36,10 @@ export default function PositionPanel() {
     )
   }
 
-  const isLong = position.size > 0
-  const markPrice = marketStats?.mark_price || marketStats?.last_price || position.entry_price
-  const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl / position.margin) * 100).toFixed(2) : '0.00'
-  const leverageTier = position.leverage <= 10 ? 'conservative' : position.leverage <= 50 ? 'moderate' : position.leverage <= 100 ? 'aggressive' : 'degen'
+  const isLong = posSize > 0
+  const markPrice = parseFloat(marketStats?.mark_price) || parseFloat(marketStats?.last_price) || posEntryPrice
+  const pnlPercent = posMargin > 0 ? ((posUnrealizedPnl / posMargin) * 100).toFixed(2) : '0.00'
+  const leverageTier = posLeverage <= 10 ? 'conservative' : posLeverage <= 50 ? 'moderate' : posLeverage <= 100 ? 'aggressive' : 'degen'
 
   const handleClosePosition = async () => {
     setIsClosing(true)
@@ -50,10 +58,10 @@ export default function PositionPanel() {
       {/* Position Header */}
       <div className="flex items-center justify-between mb-3">
         <span className={`font-bold ${isLong ? 'text-trade-green' : 'text-trade-red'}`}>
-          {isLong ? 'LONG' : 'SHORT'} {Math.abs(position.size).toFixed(3)}
+          {isLong ? 'LONG' : 'SHORT'} {Math.abs(posSize).toFixed(3)}
         </span>
         <span className={`px-2 py-0.5 rounded text-xs leverage-${leverageTier}`}>
-          {position.leverage}x
+          {posLeverage}x
         </span>
       </div>
 
@@ -61,7 +69,7 @@ export default function PositionPanel() {
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="text-gray-500">Entry Price</span>
-          <span>${position.entry_price.toFixed(2)}</span>
+          <span>${posEntryPrice.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Mark Price</span>
@@ -69,17 +77,17 @@ export default function PositionPanel() {
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Margin</span>
-          <span>${position.margin.toFixed(2)}</span>
+          <span>${posMargin.toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Unrealized P&L</span>
-          <span className={position.unrealized_pnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
-            {position.unrealized_pnl >= 0 ? '+' : ''}${position.unrealized_pnl.toFixed(2)} ({pnlPercent}%)
+          <span className={posUnrealizedPnl >= 0 ? 'text-trade-green' : 'text-trade-red'}>
+            {posUnrealizedPnl >= 0 ? '+' : ''}${posUnrealizedPnl.toFixed(2)} ({pnlPercent}%)
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Liq. Price</span>
-          <span className="text-trade-red">${position.liquidation_price.toFixed(2)}</span>
+          <span className="text-trade-red">${posLiqPrice.toFixed(2)}</span>
         </div>
       </div>
 

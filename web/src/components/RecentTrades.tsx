@@ -26,14 +26,23 @@ export default function RecentTrades() {
     }
   }
 
+  // Parse trade values from API strings to numbers
+  const parsedTrades = recentTrades.map(trade => ({
+    ...trade,
+    price: parseFloat(trade.price) || 0,
+    size: parseFloat(trade.size) || 0,
+    buyer_leverage: trade.buyer_leverage || 0,
+    seller_leverage: trade.seller_leverage || 0
+  }))
+
   return (
-    <div className="text-xs space-y-2 max-h-64 overflow-y-auto">
-      {recentTrades.length === 0 ? (
+    <div className="text-xs space-y-2 h-[220px] overflow-y-auto">
+      {parsedTrades.length === 0 ? (
         <div className="text-center text-gray-500 py-4">
           No recent trades
         </div>
       ) : (
-        recentTrades.slice(0, 20).map((trade) => (
+        parsedTrades.slice(0, 20).map((trade) => (
           <div key={trade.id} className="flex items-center justify-between py-1 border-b border-trade-border">
             <div>
               <span className={trade.aggressor_side === 'buy' ? 'text-trade-green' : 'text-trade-red'}>

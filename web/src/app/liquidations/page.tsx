@@ -18,8 +18,18 @@ export default function LiquidationsPage() {
     return () => clearInterval(interval)
   }, [fetchRecentLiquidations, fetchMarketStats])
 
-  const insuranceFund = marketStats?.insurance_fund || 1000000
-  const liquidations = recentLiquidations
+  const insuranceFund = parseFloat(marketStats?.insurance_fund) || 1000000
+
+  // Parse liquidation values from API strings to numbers
+  const liquidations = recentLiquidations.map(l => ({
+    ...l,
+    size: parseFloat(l.size) || 0,
+    entry_price: parseFloat(l.entry_price) || 0,
+    liquidation_price: parseFloat(l.liquidation_price) || 0,
+    mark_price: parseFloat(l.mark_price) || 0,
+    loss: parseFloat(l.loss) || 0,
+    leverage: l.leverage || 1
+  }))
 
   const getLeverageBadge = (leverage: number) => {
     const tier = leverage <= 10 ? 'conservative' : leverage <= 50 ? 'moderate' : leverage <= 100 ? 'aggressive' : 'degen'

@@ -11,7 +11,8 @@ export default function TradeForm() {
 
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [orderType, setOrderType] = useState<'limit' | 'market'>('limit')
-  const [price, setPrice] = useState(marketStats?.last_price?.toFixed(2) || '1000.00')
+  const lastPrice = parseFloat(marketStats?.last_price) || 1000
+  const [price, setPrice] = useState(lastPrice.toFixed(2))
   const [size, setSize] = useState('1.0')
   const [leverage, setLeverage] = useState(10)
   const [isSubmitting, setIsSubmitting] = useState(false)
