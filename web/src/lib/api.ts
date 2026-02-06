@@ -115,6 +115,12 @@ export interface Order {
   created_at: string
 }
 
+export interface AppConfig {
+  timezone: string
+  max_leverage: number
+  instrument: string
+}
+
 // API Client
 class ApiClient {
   private token: string | null = null
@@ -163,6 +169,11 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  // Config
+  async getConfig(): Promise<AppConfig> {
+    return this.request('/api/v1/config')
   }
 
   // Auth

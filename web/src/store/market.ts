@@ -10,6 +10,7 @@ interface MarketState {
   recentLiquidations: Liquidation[]
   marketStats: MarketStats | null
   traders: Trader[]
+  timezone: string
 
   // Loading states
   isLoading: boolean
@@ -19,6 +20,7 @@ interface MarketState {
   isConnected: boolean
 
   // Actions
+  fetchConfig: () => Promise<void>
   fetchOrderBook: () => Promise<void>
   fetchRecentTrades: () => Promise<void>
   fetchAllPositions: () => Promise<void>
@@ -46,11 +48,21 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   recentLiquidations: [],
   marketStats: null,
   traders: [],
+  timezone: 'Asia/Kolkata',
   isLoading: false,
   error: null,
   isConnected: false,
 
   // Fetch actions
+  fetchConfig: async () => {
+    try {
+      const config = await api.getConfig()
+      set({ timezone: config.timezone })
+    } catch (e) {
+      console.error('Failed to fetch config:', e)
+    }
+  },
+
   fetchOrderBook: async () => {
     try {
       const orderBook = await api.getOrderBook()
@@ -109,6 +121,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       await Promise.all([
+        get().fetchConfig(),
         get().fetchOrderBook(),
         get().fetchRecentTrades(),
         get().fetchAllPositions(),

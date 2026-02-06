@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useMarketStore } from '@/store/market'
 
 export default function RecentTrades() {
-  const { recentTrades, fetchRecentTrades } = useMarketStore()
+  const { recentTrades, fetchRecentTrades, timezone } = useMarketStore()
 
   useEffect(() => {
     fetchRecentTrades()
@@ -20,7 +20,7 @@ export default function RecentTrades() {
   const formatTime = (timestamp: string) => {
     try {
       const date = new Date(timestamp)
-      return date.toLocaleTimeString('en-US', { hour12: false })
+      return date.toLocaleTimeString('en-IN', { hour12: false, timeZone: timezone })
     } catch {
       return timestamp
     }

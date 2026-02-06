@@ -318,6 +318,8 @@ func (me *MatchingEngine) createTrade(aggressor, resting *domain.Order, price, s
 		SellerID:          sellerOrder.TraderID,
 		BuyerOrderID:      buyerOrder.ID,
 		SellerOrderID:     sellerOrder.ID,
+		BuyerLeverage:     buyerOrder.Leverage,
+		SellerLeverage:    sellerOrder.Leverage,
 		BuyerEffect:       buyerEffect,
 		SellerEffect:      sellerEffect,
 		BuyerNewPosition:  buyerNewPos,

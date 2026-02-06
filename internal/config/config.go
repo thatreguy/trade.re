@@ -21,8 +21,9 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings
 type ServerConfig struct {
-	Port int    `yaml:"port"`
-	Host string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Host     string `yaml:"host"`
+	Timezone string `yaml:"timezone"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings
@@ -159,7 +160,8 @@ func LoadOrDefault(path string) *Config {
 		return &Config{
 			Server: ServerConfig{
 				Port: 8080,
-				Host: "0.0.0.0",
+				Host:     "0.0.0.0",
+			Timezone: "Asia/Kolkata",
 			},
 			Database: DatabaseConfig{
 				Host:           "localhost",

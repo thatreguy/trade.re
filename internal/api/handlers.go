@@ -20,13 +20,18 @@ type Server struct {
 	engine   *engine.MatchingEngine
 	hub      *ws.Hub
 	upgrader websocket.Upgrader
+	timezone string
 }
 
 // NewServer creates a new API server
-func NewServer(eng *engine.MatchingEngine, hub *ws.Hub) *Server {
+func NewServer(eng *engine.MatchingEngine, hub *ws.Hub, timezone string) *Server {
+	if timezone == "" {
+		timezone = "Asia/Kolkata"
+	}
 	return &Server{
-		engine: eng,
-		hub:    hub,
+		engine:   eng,
+		hub:      hub,
+		timezone: timezone,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -58,6 +63,9 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 
 	// API v1
 	r.Route("/api/v1", func(r chi.Router) {
+		// Config (public settings)
+		r.Get("/config", s.handleGetConfig)
+
 		// Traders (public - transparency!)
 		r.Route("/traders", func(r chi.Router) {
 			r.Get("/", s.handleGetTraders)
@@ -110,6 +118,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
 		"time":   time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// handleGetConfig returns public configuration
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"timezone":     s.timezone,
+		"max_leverage": 150,
+		"instrument":   "R.index",
 	})
 }
 
@@ -268,6 +285,7 @@ func (s *Server) handleSubmitOrder(w http.ResponseWriter, r *http.Request) {
 		Type       string `json:"type"`
 		Price      string `json:"price"`
 		Size       string `json:"size"`
+		Leverage   int    `json:"leverage"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -300,6 +318,7 @@ func (s *Server) handleSubmitOrder(w http.ResponseWriter, r *http.Request) {
 		Type:       domain.OrderType(req.Type),
 		Price:      price,
 		Size:       size,
+		Leverage:   req.Leverage,
 	}
 
 	trades, err := s.engine.SubmitOrder(order)

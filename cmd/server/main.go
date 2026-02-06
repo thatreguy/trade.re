@@ -96,7 +96,7 @@ func main() {
 	defer liqEngine.Stop()
 
 	// Create API server
-	server := api.NewServer(eng, hub)
+	server := api.NewServer(eng, hub, cfg.Server.Timezone)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -126,6 +126,7 @@ func main() {
 	log.Printf("Endpoints:")
 	log.Printf("  GET  /health")
 	log.Printf("  GET  /ws (WebSocket)")
+	log.Printf("  GET  /api/v1/config")
 	log.Printf("  GET  /api/v1/auth/register")
 	log.Printf("  GET  /api/v1/auth/login")
 	log.Printf("  GET  /api/v1/traders")
